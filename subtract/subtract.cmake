@@ -25,21 +25,19 @@ set(${module_name}_common_pref
     DESTINATION_LIB_DIR lib
 )
 
-list(APPEND ${m}_unsetter ${m}_res ${m}_out ${m}_err)
+list(APPEND ${m}_unsetter ${m}_res ${m}_filter_id ${m}_filter_short_id ${m}_filter_hr_id ${m}_err)
 execute_process(
-#    COMMAND git rev-parse ~1
-    COMMAND git rev-parse --short HEAD
+    COMMAND git rev-parse HEAD
     RESULT_VARIABLE ${m}_res
-    OUTPUT_VARIABLE ${m}_out
+    OUTPUT_VARIABLE ${m}_filter_id
     ERROR_VARIABLE ${m}_err
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
 )
-
-message(+++${CMAKE_CURRENT_SOURCE_DIR})
-message(+++${${m}_res})
-message(++++++${${m}_out})
-message(++++++${${m}_err})
-return()
+if(NOT ${${m}_res} EQUAL 0)
+    message(FATAL_ERROR "fail to fetch commit hash of current HEAD")
+endif()
+string(SUBSTRING "${${m}_filter_id}" 0 7 ${m}_filter_short_id)
+set(${m}_filter_hr_id ${PROJECT_NAME}/${${m}_filter_short_id}) # hr_id : human readable id
 
 #CMakeLibraryTemplate(${module_name} EXPORT_LIB_TYPE static ${${module_name}_common_pref} )
 CMakeLibraryTemplate(${module_name} EXPORT_LIB_TYPE shared ${${module_name}_common_pref} )
@@ -54,6 +52,7 @@ target_link_libraries(${__t} PRIVATE ${${module_name}_static})
 target_compile_definitions(${__t} PRIVATE ${${module_name}_static_tmain_ppcs})
 
 
+return()
 
 
 foreach(__v ${${m}_unsetter})

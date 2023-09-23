@@ -9,6 +9,7 @@ endif()
 include(${CMAKE_BINARY_DIR}/CMakeKautilHeader.cmake)
 git_clone(https://raw.githubusercontent.com/kautils/CMakeLibrarytemplate/v0.0.1/CMakeLibrarytemplate.cmake)
 git_clone(https://raw.githubusercontent.com/kautils/CMakeGitCurrentCommitHash/v0.0.1/CMakeGitCurrentCommitHash.cmake)
+git_clone(https://raw.githubusercontent.com/kautils/CMakeFetchKautilModule/v0.0.1/CMakeFetchKautilModule.cmake)
 
 set(module_name subtract)
 unset(srcs)
@@ -27,6 +28,19 @@ set(${module_name}_common_pref
 )
 
 
+include(ProcessorCount)
+list(APPEND ${m}_unsetter ${m}_thread_cnt)
+ProcessorCount(${m}_thread_cnt)
+
+CMakeFetchKautilModule(c11_string_allocator
+        GIT https://github.com/kautils/btree_search.git
+        REMOTE origin 
+        TAG v0.0.1
+        CMAKE_BUILD_OPTION -j ${${m}_thread_cnt}
+        )
+
+
+return()
 
 CMakeGitCurrentCommitHash(${m}_filter_id)
 string(SUBSTRING "${${m}_filter_id}" 0 7 ${m}_filter_short_id)

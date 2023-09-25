@@ -25,13 +25,10 @@ struct filter_database_handler{
     void (*free)(void * hdl)=0;
     int (*set_uri)(void * hdl,const char * prfx,const char * id)=0;
     int (*set_up_database)(void * hdl)=0;
-    int (*set_output)(void * hdl,void * begin,void * end)=0;
-    int (*set_input)(void * hdl,void * begin,void * end)=0;
+    int (*set_output)(void * hdl,const void * begin,const void * end)=0;
+    int (*set_input)(void * hdl,const void * begin,const void * end)=0;
     int (*set_io_length)(void * hdl,uint64_t)=0;
-    int (*save)(void * hdl,uint64_t const& io_len
-            ,void * begin_i,void * end_i
-            ,void * begin_o,void * end_o)=0;
-    
+    int (*save)(void * hdl)=0;
     void * hdl=0;
 };
 
@@ -45,8 +42,8 @@ struct filter{
     uint64_t(*input_bytes)(filter *)=filter_input_bytes;
     const char *(*id)(filter *)=0;
     const char *(*id_hr)(filter *)=0;
+    int (*database_type)(filter *)=0;
     void* m=0;
-    void* database=0;
     filter_database_handler * db=0;
     filter_handler * hdl=0;
 } __attribute__((aligned(8)));
@@ -65,8 +62,8 @@ static const char * kInsertSt = "insert or ignore into m(k,v) values(?,?)";
 
 
 struct io_data{
-    void * begin;
-    void * end;
+    const void * begin;
+    const void * end;
     uint64_t io_length;
 };
 
@@ -129,31 +126,31 @@ int filter_database_sqlite_setup(void * hdl){
 }
 
 
-int set_output(void * hdl,void * begin,void * end){
+int filter_database_sqlite_set_output(void * hdl,const void * begin,const void * end){
     auto m=reinterpret_cast<filter_database_sqlite3_handler*>(hdl);
     m->o.begin = begin;
     m->o.end = end;
     return m->o.begin < m->o.end; 
 }
 
-int set_input(void * hdl,void * begin,void * end){
+int filter_database_sqlite_set_input(void * hdl,const void * begin,const void * end){
     auto m=reinterpret_cast<filter_database_sqlite3_handler*>(hdl);
     m->i.begin = begin;
     m->i.end = end;
     return m->i.begin < m->i.end; 
 }
 
-int set_io_length(void * hdl,uint64_t len){
+int filter_database_sqlite_set_io_length(void * hdl,uint64_t len){
     auto m=reinterpret_cast<filter_database_sqlite3_handler*>(hdl);
     m->io_len= len;
     return 0;
 }
 
-int filter_execute(void * hdl){
+int filter_database_sqlite_save(void * hdl){
     auto m=reinterpret_cast<filter_database_sqlite3_handler*>(hdl);
     m->create->step(true);
-    if(auto begin_i = reinterpret_cast<char*>(m->i.begin)){
-        auto end_i = reinterpret_cast<char*>(m->i.end);
+    if(auto begin_i = reinterpret_cast<const char*>(m->i.begin)){
+        auto end_i = reinterpret_cast<const char*>(m->i.end);
         auto block_i = (end_i - begin_i) / m->io_len;
         if(auto begin_o = reinterpret_cast<const char*>(m->o.begin)){
             auto end_o = reinterpret_cast<const char*>(m->o.end);
@@ -175,53 +172,53 @@ int filter_execute(void * hdl){
     return 1;
 }
 
-
-int filter_database_sqlite(filter* f){
-    auto db=reinterpret_cast<filter_database_sqlite3_handler*>(f->database);
-    if(!db->sql) {
-        auto path = f->hdl->local_uri +"/" + f->id_hr(f) + ".sqlite";
-        {
-            struct stat st;
-            auto buf = std::string(path.data());
-            auto dir = dirname(buf.data());
-            if(stat(dir,&st)){
-                if(mkdir(dir)){
-                    printf("fail");
-                    return 1;
-                }
-            } 
-        }
-        db->op = kautil::database::sqlite3::sqlite_options(); 
-        db->sql = new kautil::database::Sqlite3{path.data(),db->op->sqlite_open_create()|db->op->sqlite_open_readwrite()|db->op->sqlite_open_nomutex()};
-        db->create = db->sql->compile(kCreateSt);
-        db->insert = db->sql->compile(kInsertSt);
-    }
-
-
-    db->create->step(true);
-    if(auto begin_i = reinterpret_cast<char*>(f->input(f))){
-        auto end_i = reinterpret_cast<char*>(f->input(f)) + f->input_bytes(f);
-        auto block_i = (end_i - begin_i) / f->hdl->io_len;
-
-        if(auto begin_o = reinterpret_cast<const char*>(f->output(f))){
-            auto end_o = reinterpret_cast<const char*>(f->output(f)) + f->output_bytes(f);
-            auto block_o = (end_o - begin_o) / f->hdl->io_len;
-            auto fail = false;
-            db->sql->begin_transaction();
-            for(;begin_i != end_i; begin_i+=block_i,begin_o+=block_o){
-                auto res_stmt = !db->insert->set_blob(1,begin_i,block_i) + !db->insert->set_blob(2,begin_o,block_o);
-                auto res_step = db->insert->step(true);
-                res_step = res_step != db->op->sqlite_ok();
-                if((fail=res_stmt+res_step))break;
-            }
-            if(fail) db->sql->roll_back();
-            db->sql->end_transaction();
-            return 0;
-        }
-        return 1;
-    }else db->sql->error_msg();
-    return 1;
-}
+//
+//int filter_database_sqlite(filter* f){
+//    auto db=reinterpret_cast<filter_database_sqlite3_handler*>(f->database);
+//    if(!db->sql) {
+//        auto path = f->hdl->local_uri +"/" + f->id_hr(f) + ".sqlite";
+//        {
+//            struct stat st;
+//            auto buf = std::string(path.data());
+//            auto dir = dirname(buf.data());
+//            if(stat(dir,&st)){
+//                if(mkdir(dir)){
+//                    printf("fail");
+//                    return 1;
+//                }
+//            } 
+//        }
+//        db->op = kautil::database::sqlite3::sqlite_options(); 
+//        db->sql = new kautil::database::Sqlite3{path.data(),db->op->sqlite_open_create()|db->op->sqlite_open_readwrite()|db->op->sqlite_open_nomutex()};
+//        db->create = db->sql->compile(kCreateSt);
+//        db->insert = db->sql->compile(kInsertSt);
+//    }
+//
+//
+//    db->create->step(true);
+//    if(auto begin_i = reinterpret_cast<char*>(f->input(f))){
+//        auto end_i = reinterpret_cast<char*>(f->input(f)) + f->input_bytes(f);
+//        auto block_i = (end_i - begin_i) / f->hdl->io_len;
+//
+//        if(auto begin_o = reinterpret_cast<const char*>(f->output(f))){
+//            auto end_o = reinterpret_cast<const char*>(f->output(f)) + f->output_bytes(f);
+//            auto block_o = (end_o - begin_o) / f->hdl->io_len;
+//            auto fail = false;
+//            db->sql->begin_transaction();
+//            for(;begin_i != end_i; begin_i+=block_i,begin_o+=block_o){
+//                auto res_stmt = !db->insert->set_blob(1,begin_i,block_i) + !db->insert->set_blob(2,begin_o,block_o);
+//                auto res_step = db->insert->step(true);
+//                res_step = res_step != db->op->sqlite_ok();
+//                if((fail=res_stmt+res_step))break;
+//            }
+//            if(fail) db->sql->roll_back();
+//            db->sql->end_transaction();
+//            return 0;
+//        }
+//        return 1;
+//    }else db->sql->error_msg();
+//    return 1;
+//}
 
 
 
@@ -261,6 +258,7 @@ struct filter_lookup_table{
     filter_lookup_elem output_bytes{.key="output_bytes"};
     filter_lookup_elem input{.key="input"};
     filter_lookup_elem input_bytes{.key="input_bytes"};
+    filter_lookup_elem database_type{.key="database_type"};
     filter_lookup_elem id{.key="id"};
     filter_lookup_elem id_hr{.key="id_hr"};
     filter_lookup_elem member{.key="member"};
@@ -301,6 +299,7 @@ filter_lookup_table * filter_lookup_table_initialize(){
     res->id.value=(void*)id;
     res->id_hr.value=(void*)id_hr;
     res->member.value = new subtract{};
+    res->database_type.value = (void *) database_type;
     return res;
 }
 
@@ -334,6 +333,33 @@ uint64_t filter_first_output_length(filter * f){
 
 
 
+filter_database_handler* filter_database_handler_initialize(filter * f){
+    if(f->database_type){
+        if(f->database_type(f)==FILTER_DATABASE_TYPE_SQLITE3){
+            auto res = new filter_database_handler{};
+            res->hdl = new filter_database_sqlite3_handler{};
+            res->free = filter_database_sqlite_free;
+            res->alloc = filter_database_sqlite_alloc;
+            res->set_uri = filter_database_sqlite_set_uri;
+            res->set_up_database = filter_database_sqlite_setup;
+            res->set_io_length = filter_database_sqlite_set_io_length;
+            res->set_output = filter_database_sqlite_set_output;
+            res->set_input = filter_database_sqlite_set_input;
+            res->save = filter_database_sqlite_save;
+            return res;
+        }
+    }
+    return nullptr;
+}
+
+
+void filter_database_handler_free(filter * f){
+    if(f->db){
+        f->db->free(f->db->hdl);
+        delete f->db;
+    }
+}
+
 int main(){
     
     auto input_len = 100; // all the input/output inside a chain is the same,if the result structure are counted as one data 
@@ -355,6 +381,7 @@ int main(){
     using output_t = void*(*)(filter *);
     using output_bytes_t = uint64_t(*)(filter *);
     using filter_id_t = const char* (*)(filter *);
+    using database_type_t = int (*)(filter *);
 
     auto f = filter{};
     auto fhdl = filter_handler{};
@@ -367,8 +394,9 @@ int main(){
     f.output_bytes= (output_bytes_t)filter_lookup(flookup,"output_bytes");
     f.id= (filter_id_t)filter_lookup(flookup,"id");
     f.id_hr= (filter_id_t)filter_lookup(flookup,"id_hr");
+    f.database_type =(database_type_t) filter_lookup(flookup,"database_type");
     f.m= filter_lookup(flookup,"member");
-    f.database = new filter_database_sqlite3_handler{};
+    f.db = filter_database_handler_initialize(&f);
     f.hdl=&fhdl;
     
     fhdl.filters.push_back(&input);
@@ -379,6 +407,7 @@ int main(){
     }
     
     
+    
     for(auto i = 1; i < fhdl.filters.size(); ++i){
         auto f = fhdl.filters[i];
         f->hdl->previous = f->hdl->current;
@@ -386,7 +415,20 @@ int main(){
         
         f->main(f);
         if(FILTER_DATABASE_TYPE_SQLITE3==database_type(f)){
-            filter_database_sqlite(f);
+            
+            f->db->alloc();
+            f->db->set_uri(f->db,f->hdl->local_uri.data(),f->id_hr(f));
+            f->db->set_io_length(f->db,input_len);
+            
+            auto out = (const char *) f->output(f);
+            f->db->set_output(f->db,out,out+f->output_bytes(f));
+            
+            auto in = (const char *) f->input(f);
+            f->db->set_output(f->db,in,in+f->input_bytes(f));
+            
+            f->db->set_up_database(f->db);
+            f->db->save(f->db);
+            
         }
     }
     
@@ -400,6 +442,7 @@ int main(){
         printf("%lld\n",f.input_bytes(&f));
     }
 
+    filter_database_handler_free(&f);
     filter_lookup_table_free(flookup);
     delete [] (double*)i->o;
     delete i;

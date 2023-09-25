@@ -16,21 +16,87 @@ struct filter_handler{
     filter * current=0;
     std::vector<filter*> filters;
     std::string local_uri;
-    uint64_t io_len=0; // input_len not output_len. all should be the same.
+    uint64_t io_len=0;
 };
 
+struct filter_database_handler;
+void filter_database_handler_free(filter_database_handler * hdl);
+int filter_database_handler_set_uri(filter_database_handler * hdl,const char * prfx,const char * id);
+int filter_database_handler_setup(filter_database_handler * hdl);
+int filter_database_handler_set_output(filter_database_handler * hdl,const void * begin,const void * end);
+int filter_database_handler_set_input(filter_database_handler * hdl,const void * begin,const void * end);
+int filter_database_handler_set_io_length(filter_database_handler * hdl,uint64_t);
+int filter_database_handler_save(filter_database_handler * hdl);
 
+
+
+void* filter_database_sqlite_initialize();
+int filter_database_sqlite_set_uri(void * whdl,const char * prfx,const char * id);
+void filter_database_sqlite_free(void* whdl);
+int filter_database_sqlite_setup(void * whdl);
+int filter_database_sqlite_set_output(void * whdl,const void * begin,const void * end);
+int filter_database_sqlite_set_input(void * whdl,const void * begin,const void * end);
+int filter_database_sqlite_set_io_length(void * whdl,uint64_t len);
+int filter_database_sqlite_save(void * whdl);
+
+
+#define FILTER_DATABASE_TYPE_SQLITE3 1
 struct filter_database_handler{
-    void *(*alloc)()=0;
-    void (*free)(void * hdl)=0;
-    int (*set_uri)(void * hdl,const char * prfx,const char * id)=0;
-    int (*set_up_database)(void * hdl)=0;
-    int (*set_output)(void * hdl,const void * begin,const void * end)=0;
-    int (*set_input)(void * hdl,const void * begin,const void * end)=0;
-    int (*set_io_length)(void * hdl,uint64_t)=0;
-    int (*save)(void * hdl)=0;
-    void * hdl=0;
+    int (*set_uri)(filter_database_handler * hdl,const char * prfx,const char * id)=filter_database_handler_set_uri;
+    void (*free)(filter_database_handler * hdl)=filter_database_handler_free;
+    int (*setup)(filter_database_handler * hdl)=filter_database_handler_setup;
+    int (*set_output)(filter_database_handler * hdl,const void * begin,const void * end)=filter_database_handler_set_output;
+    int (*set_input)(filter_database_handler * hdl,const void * begin,const void * end)=filter_database_handler_set_input;
+    int (*set_io_length)(filter_database_handler * hdl,uint64_t)=filter_database_handler_set_io_length;
+    int (*save)(filter_database_handler * hdl)=filter_database_handler_save;
+    int type=0;
+    void * instance=0;
 };
+
+
+int filter_database_handler_set_uri(filter_database_handler * hdl,const char * prfx,const char * id){
+    switch(hdl->type){
+        case FILTER_DATABASE_TYPE_SQLITE3: return  filter_database_sqlite_set_uri(hdl->instance,prfx,id);
+    }
+    return 1;
+}
+void filter_database_handler_free(filter_database_handler * hdl){
+    switch(hdl->type){
+        case FILTER_DATABASE_TYPE_SQLITE3: filter_database_sqlite_free(hdl->instance); break;
+    }
+}
+int filter_database_handler_setup(filter_database_handler * hdl){
+    switch(hdl->type){
+        case FILTER_DATABASE_TYPE_SQLITE3: return filter_database_sqlite_setup(hdl->instance); break;
+    }
+    return 1;
+}
+int filter_database_handler_set_output(filter_database_handler * hdl,const void * begin,const void * end){
+    switch(hdl->type){
+        case FILTER_DATABASE_TYPE_SQLITE3: return filter_database_sqlite_set_output(hdl->instance,begin,end); break;
+    }
+    return 1;
+}
+int filter_database_handler_set_input(filter_database_handler * hdl,const void * begin,const void * end){
+    switch(hdl->type){
+        case FILTER_DATABASE_TYPE_SQLITE3: return filter_database_sqlite_set_input(hdl->instance,begin,end); break;
+    }
+    return 1;
+}
+int filter_database_handler_set_io_length(filter_database_handler * hdl,uint64_t len){
+    switch(hdl->type){
+        case FILTER_DATABASE_TYPE_SQLITE3: return filter_database_sqlite_set_io_length(hdl->instance,len); break;
+    }
+    return 1;
+}
+int filter_database_handler_save(filter_database_handler * hdl){
+    switch(hdl->type){
+        case FILTER_DATABASE_TYPE_SQLITE3: return  filter_database_sqlite_save(hdl->instance); break;
+    }
+    return 1;
+}
+
+
 
 void* filter_input(filter * f);
 uint64_t filter_input_bytes(filter * f);
@@ -81,31 +147,38 @@ struct filter_database_sqlite3_handler{
 };
 
 
-void* filter_database_sqlite_alloc(){
+filter_database_sqlite3_handler* get_instance(void * whdl){
+//    return reinterpret_cast<filter_database_sqlite3_handler*>(reinterpret_cast<filter_database_handler*>(whdl)->instance);
+    return reinterpret_cast<filter_database_sqlite3_handler*>(whdl);
+}
+
+
+
+void* filter_database_sqlite_initialize(){
     auto res = new filter_database_sqlite3_handler;
     res->op = kautil::database::sqlite3::sqlite_options(); 
     return res;
 }
 
 
-int filter_database_sqlite_set_uri(void * hdl,const char * prfx,const char * id){
-    auto m=reinterpret_cast<filter_database_sqlite3_handler*>(hdl);
+int filter_database_sqlite_set_uri(void * whdl,const char * prfx,const char * id){
+    auto m=get_instance(whdl);
     m->uri_prfx = prfx; 
     m->id = id; 
     return 0;
 }
 
-void filter_database_sqlite_free(void* hdl){
-    auto m=reinterpret_cast<filter_database_sqlite3_handler*>(hdl);
+void filter_database_sqlite_free(void* whdl){
+    auto m=get_instance(whdl);
     delete m->op;
     delete m->sql;
     delete m;
 }
 
-int filter_database_sqlite_setup(void * hdl){
-    auto db=reinterpret_cast<filter_database_sqlite3_handler*>(hdl);
-    if(!db->sql) {
-        auto path = db->uri_prfx +"/" + db->id + ".sqlite";
+int filter_database_sqlite_setup(void * whdl){
+    auto m=get_instance(whdl);
+    if(!m->sql) {
+        auto path = m->uri_prfx +"/" + m->id + ".sqlite";
         {
             struct stat st;
             auto buf = std::string(path.data());
@@ -117,37 +190,37 @@ int filter_database_sqlite_setup(void * hdl){
                 }
             } 
         }
-        db->op = kautil::database::sqlite3::sqlite_options(); 
-        db->sql = new kautil::database::Sqlite3{path.data(),db->op->sqlite_open_create()|db->op->sqlite_open_readwrite()|db->op->sqlite_open_nomutex()};
-        db->create = db->sql->compile(kCreateSt);
-        db->insert = db->sql->compile(kInsertSt);
+        m->op = kautil::database::sqlite3::sqlite_options(); 
+        m->sql = new kautil::database::Sqlite3{path.data(),m->op->sqlite_open_create()|m->op->sqlite_open_readwrite()|m->op->sqlite_open_nomutex()};
+        m->create = m->sql->compile(kCreateSt);
+        m->insert = m->sql->compile(kInsertSt);
     }
     return 0;
 }
 
 
-int filter_database_sqlite_set_output(void * hdl,const void * begin,const void * end){
-    auto m=reinterpret_cast<filter_database_sqlite3_handler*>(hdl);
+int filter_database_sqlite_set_output(void * whdl,const void * begin,const void * end){
+    auto m=get_instance(whdl);
     m->o.begin = begin;
     m->o.end = end;
     return m->o.begin < m->o.end; 
 }
 
-int filter_database_sqlite_set_input(void * hdl,const void * begin,const void * end){
-    auto m=reinterpret_cast<filter_database_sqlite3_handler*>(hdl);
+int filter_database_sqlite_set_input(void * whdl,const void * begin,const void * end){
+    auto m=get_instance(whdl);
     m->i.begin = begin;
     m->i.end = end;
     return m->i.begin < m->i.end; 
 }
 
-int filter_database_sqlite_set_io_length(void * hdl,uint64_t len){
-    auto m=reinterpret_cast<filter_database_sqlite3_handler*>(hdl);
+int filter_database_sqlite_set_io_length(void * whdl,uint64_t len){
+    auto m=get_instance(whdl);
     m->io_len= len;
     return 0;
 }
 
-int filter_database_sqlite_save(void * hdl){
-    auto m=reinterpret_cast<filter_database_sqlite3_handler*>(hdl);
+int filter_database_sqlite_save(void * whdl){
+    auto m=get_instance(whdl);
     m->create->step(true);
     if(auto begin_i = reinterpret_cast<const char*>(m->i.begin)){
         auto end_i = reinterpret_cast<const char*>(m->i.end);
@@ -156,18 +229,19 @@ int filter_database_sqlite_save(void * hdl){
             auto end_o = reinterpret_cast<const char*>(m->o.end);
             auto block_o = (end_o - begin_o) / m->io_len;
             auto fail = false;
-            m->sql->begin_transaction();
-            for(;begin_i != end_i; begin_i+=block_i,begin_o+=block_o){
-                auto res_stmt = !m->insert->set_blob(1,begin_i,block_i) + !m->insert->set_blob(2,begin_o,block_o);
-                auto res_step = m->insert->step(true);
-                res_step = res_step != m->op->sqlite_ok();
-                if((fail=res_stmt+res_step))break;
+            if(begin_i < begin_o){
+                m->sql->begin_transaction();
+                for(;begin_i != end_i; begin_i+=block_i,begin_o+=block_o){
+                    auto res_stmt = !m->insert->set_blob(1,begin_i,block_i) + !m->insert->set_blob(2,begin_o,block_o);
+                    auto res_step = m->insert->step(true);
+                    res_step = res_step != m->op->sqlite_ok();
+                    if((fail=res_stmt+res_step))break;
+                }
+                if(fail) m->sql->roll_back();
+                m->sql->end_transaction();
+                return !fail;
             }
-            if(fail) m->sql->roll_back();
-            m->sql->end_transaction();
-            return 0;
         }
-        return 1;
     }else m->sql->error_msg();
     return 1;
 }
@@ -175,7 +249,7 @@ int filter_database_sqlite_save(void * hdl){
 //
 //int filter_database_sqlite(filter* f){
 //    auto db=reinterpret_cast<filter_database_sqlite3_handler*>(f->database);
-//    if(!db->sql) {
+//    if(!m->sql) {
 //        auto path = f->hdl->local_uri +"/" + f->id_hr(f) + ".sqlite";
 //        {
 //            struct stat st;
@@ -188,14 +262,14 @@ int filter_database_sqlite_save(void * hdl){
 //                }
 //            } 
 //        }
-//        db->op = kautil::database::sqlite3::sqlite_options(); 
-//        db->sql = new kautil::database::Sqlite3{path.data(),db->op->sqlite_open_create()|db->op->sqlite_open_readwrite()|db->op->sqlite_open_nomutex()};
-//        db->create = db->sql->compile(kCreateSt);
-//        db->insert = db->sql->compile(kInsertSt);
+//        m->op = kautil::database::sqlite3::sqlite_options(); 
+//        m->sql = new kautil::database::Sqlite3{path.data(),m->op->sqlite_open_create()|m->op->sqlite_open_readwrite()|m->op->sqlite_open_nomutex()};
+//        m->create = m->sql->compile(kCreateSt);
+//        m->insert = m->sql->compile(kInsertSt);
 //    }
 //
 //
-//    db->create->step(true);
+//    m->create->step(true);
 //    if(auto begin_i = reinterpret_cast<char*>(f->input(f))){
 //        auto end_i = reinterpret_cast<char*>(f->input(f)) + f->input_bytes(f);
 //        auto block_i = (end_i - begin_i) / f->hdl->io_len;
@@ -204,19 +278,19 @@ int filter_database_sqlite_save(void * hdl){
 //            auto end_o = reinterpret_cast<const char*>(f->output(f)) + f->output_bytes(f);
 //            auto block_o = (end_o - begin_o) / f->hdl->io_len;
 //            auto fail = false;
-//            db->sql->begin_transaction();
+//            m->sql->begin_transaction();
 //            for(;begin_i != end_i; begin_i+=block_i,begin_o+=block_o){
-//                auto res_stmt = !db->insert->set_blob(1,begin_i,block_i) + !db->insert->set_blob(2,begin_o,block_o);
-//                auto res_step = db->insert->step(true);
-//                res_step = res_step != db->op->sqlite_ok();
+//                auto res_stmt = !m->insert->set_blob(1,begin_i,block_i) + !m->insert->set_blob(2,begin_o,block_o);
+//                auto res_step = m->insert->step(true);
+//                res_step = res_step != m->op->sqlite_ok();
 //                if((fail=res_stmt+res_step))break;
 //            }
-//            if(fail) db->sql->roll_back();
-//            db->sql->end_transaction();
+//            if(fail) m->sql->roll_back();
+//            m->sql->end_transaction();
 //            return 0;
 //        }
 //        return 1;
-//    }else db->sql->error_msg();
+//    }else m->sql->error_msg();
 //    return 1;
 //}
 
@@ -238,10 +312,6 @@ void * filter_lookup(filter_lookup_table * flookup_table,const char * key){
     }
     return nullptr;
 }
-
-
-
-
 
 
 
@@ -272,7 +342,7 @@ extern "C" int fmain(filter * f) {
     auto a = m(f)->len;
     m(f)->res.push_back(100);
     
-    if(m(f)->res.size() < len)m(f)->res.resize(len);
+    if(m(f)->res.size() < len) m(f)->res.resize(len);
     m(f)->len=len;
     for(auto i = 0; i < len ; i++){
         m(f)->res[i] = arr[i];
@@ -281,7 +351,6 @@ extern "C" int fmain(filter * f) {
 }
 
 
-#define FILTER_DATABASE_TYPE_SQLITE3 0
 
 
 extern "C" uint64_t output_bytes(filter * f) { return m(f)->res.size()*sizeof(double); }
@@ -331,33 +400,29 @@ uint64_t filter_first_output_length(filter * f){
     return reinterpret_cast<filter_first*>(f->m)->o_length;
 }
 
-
-
 filter_database_handler* filter_database_handler_initialize(filter * f){
     if(f->database_type){
-        if(f->database_type(f)==FILTER_DATABASE_TYPE_SQLITE3){
-            auto res = new filter_database_handler{};
-            res->hdl = new filter_database_sqlite3_handler{};
-            res->free = filter_database_sqlite_free;
-            res->alloc = filter_database_sqlite_alloc;
-            res->set_uri = filter_database_sqlite_set_uri;
-            res->set_up_database = filter_database_sqlite_setup;
-            res->set_io_length = filter_database_sqlite_set_io_length;
-            res->set_output = filter_database_sqlite_set_output;
-            res->set_input = filter_database_sqlite_set_input;
-            res->save = filter_database_sqlite_save;
-            return res;
+        switch(f->database_type(f)){
+            case FILTER_DATABASE_TYPE_SQLITE3:{
+                auto res = new filter_database_handler{};
+                res->type = f->database_type(f);
+                res->instance = filter_database_sqlite_initialize();
+                return res;
+            };
         }
-    }
+    }// database_type
     return nullptr;
 }
 
 
 void filter_database_handler_free(filter * f){
-    if(f->db){
-        f->db->free(f->db->hdl);
-        delete f->db;
-    }
+    if(f->db) {
+        if (f->database_type) {
+            switch (f->database_type(f)){
+                case FILTER_DATABASE_TYPE_SQLITE3:filter_database_sqlite_free(f->db->instance);
+            };
+        } // database_type
+    }// db
 }
 
 int main(){
@@ -389,6 +454,7 @@ int main(){
     fhdl.local_uri = "./";
     
     auto flookup = filter_lookup_table_initialize();
+    f.hdl=&fhdl;
     f.main= (decltype(f.main))filter_lookup(flookup,"fmain");
     f.output= (output_t)filter_lookup(flookup,"output");
     f.output_bytes= (output_bytes_t)filter_lookup(flookup,"output_bytes");
@@ -397,7 +463,9 @@ int main(){
     f.database_type =(database_type_t) filter_lookup(flookup,"database_type");
     f.m= filter_lookup(flookup,"member");
     f.db = filter_database_handler_initialize(&f);
-    f.hdl=&fhdl;
+    
+    f.db->set_io_length(f.db,100);
+    
     
     fhdl.filters.push_back(&input);
     fhdl.filters.push_back(&f);
@@ -407,32 +475,27 @@ int main(){
     }
     
     
-    
     for(auto i = 1; i < fhdl.filters.size(); ++i){
         auto f = fhdl.filters[i];
         f->hdl->previous = f->hdl->current;
         f->hdl->current = f;
         
         f->main(f);
-        if(FILTER_DATABASE_TYPE_SQLITE3==database_type(f)){
+        if(f->db){
             
-            f->db->alloc();
             f->db->set_uri(f->db,f->hdl->local_uri.data(),f->id_hr(f));
-            f->db->set_io_length(f->db,input_len);
-            
+            f->db->set_io_length(f->db,fhdl.io_len);
             auto out = (const char *) f->output(f);
             f->db->set_output(f->db,out,out+f->output_bytes(f));
-            
+
             auto in = (const char *) f->input(f);
-            f->db->set_output(f->db,in,in+f->input_bytes(f));
-            
-            f->db->set_up_database(f->db);
+            f->db->set_input(f->db,in,in+f->input_bytes(f));
+
+            f->db->setup(f->db);
             f->db->save(f->db);
             
         }
     }
-    
-    
     
     if(f.output_bytes){
         printf("%lld\n",f.output_bytes(&f));

@@ -193,9 +193,22 @@ int filter_database_sqlite_setup(void * whdl){
         m->op = kautil::database::sqlite3::sqlite_options(); 
         m->sql = new kautil::database::Sqlite3{path.data(),m->op->sqlite_open_create()|m->op->sqlite_open_readwrite()|m->op->sqlite_open_nomutex()};
         m->create = m->sql->compile(kCreateSt);
-        m->insert = m->sql->compile(kInsertSt);
+        if(m->create){
+            auto res_crt = m->create->step(true);
+            res_crt |= ((m->create->step(true) == m->op->sqlite_ok()));
+            if(res_crt){
+                if(m->insert = m->sql->compile(kInsertSt)){
+                    return 0;
+                }
+            }
+        }
     }
-    return 0;
+    delete m->op;
+    delete m->sql;
+    m->op=nullptr;
+    m->sql=nullptr;
+    
+    return 1;
 }
 
 
@@ -221,7 +234,6 @@ int filter_database_sqlite_set_io_length(void * whdl,uint64_t len){
 
 int filter_database_sqlite_save(void * whdl){
     auto m=get_instance(whdl);
-    m->create->step(true);
     if(auto begin_i = reinterpret_cast<const char*>(m->i.begin)){
         auto end_i = reinterpret_cast<const char*>(m->i.end);
         auto block_i = (end_i - begin_i) / m->io_len;
@@ -232,10 +244,13 @@ int filter_database_sqlite_save(void * whdl){
             if(begin_i < begin_o){
                 m->sql->begin_transaction();
                 for(;begin_i != end_i; begin_i+=block_i,begin_o+=block_o){
-                    auto res_stmt = !m->insert->set_blob(1,begin_i,block_i) + !m->insert->set_blob(2,begin_o,block_o);
+                    auto res_stmt = !m->insert->set_blob(1,begin_i,block_i);
+                    res_stmt |= !m->insert->set_blob(2,begin_o,block_o);
+                    
                     auto res_step = m->insert->step(true);
-                    res_step = res_step != m->op->sqlite_ok();
-                    if((fail=res_stmt+res_step))break;
+                    res_step |= res_step == m->op->sqlite_ok();
+                    
+                    if((fail=res_stmt+!res_step))break;
                 }
                 if(fail) m->sql->roll_back();
                 m->sql->end_transaction();
@@ -483,6 +498,8 @@ int main(){
         f->main(f);
         if(f->db){
             
+            
+            // ignore / overwrite
             f->db->set_uri(f->db,f->hdl->local_uri.data(),f->id_hr(f));
             f->db->set_io_length(f->db,fhdl.io_len);
             auto out = (const char *) f->output(f);

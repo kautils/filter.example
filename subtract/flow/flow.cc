@@ -127,11 +127,11 @@ int filter_database_reset(filter * f){
     f->db->set_io_length(f->db, f->hdl->io_len);
     f->db->set_uri(f->db, f->hdl->local_uri.data(), f->id_hr(f));
 
-    auto out = (const char *) f->output(f);
-    f->db->set_output(f->db, out, out + f->output_bytes(f));
-
-    auto in = (const char *) f->input(f);
-    f->db->set_input(f->db, in, in + f->input_bytes(f));
+//    auto out = (const char *) f->output(f);
+//    f->db->set_output(f->db, out, out + f->output_bytes(f));
+//
+//    auto in = (const char *) f->input(f);
+//    f->db->set_input(f->db, in, in + f->input_bytes(f));
     
     if(!initialized | bool(!f->db->reset)){  // (0) not initialized, (1) option is changed (2) reset is not defiend
         f->db->last_option = f->option;
@@ -159,41 +159,19 @@ void filter_database_handler_free(filter * f){
 
 
 
-//struct filter_input_static{ void * data=0;uint64_t bytes=0; };
-//struct filter{
-//    int (*main)(filter * m)=0;
-//    void * (*output)(filter *)=0;
-//    uint64_t(*output_bytes)(filter *)=0;
-//    void * (*input)(filter *)=filter_input;
-//    uint64_t(*input_bytes)(filter *)=filter_input_bytes;
-//    const char *(*id)(filter *)=0;
-//    const char *(*id_hr)(filter *)=0;
-//    int (*database_type)(filter *)=0;
-//    int (*setup_database)(filter *)=filter_database_setup;
-//    int (*save)(filter *)=filter_database_save;
-//    void* m=0;
-//    filter_input_static input_static; // short cut to filter
-//    filter_database_handler * db=0;
-//    filter_handler * hdl=0;
-//    int option=0;
-//    int pos=-1;
-//} __attribute__((aligned(8)));
-
-
-
-int filter_handler_link(filter_handler * fhdl){
-    for(auto & f : fhdl->filters) {
-        if(f->pos>0){
-            auto f_i = f->hdl->filters[f->pos-1];
-            f->input_static.data = f_i->output(f_i);
-            f->input_static.bytes = f_i->output_bytes(f_i);
-        }else{
-            f->input_static.data = nullptr;
-            f->input_static.bytes = 0;
-        }
-    }
-    return 0;
-}
+//int filter_handler_link(filter_handler * fhdl){
+//    for(auto & f : fhdl->filters) {
+//        if(f->pos>0){
+//            auto f_i = f->hdl->filters[f->pos-1];
+//            f->input_static.data = f_i->output(f_i);
+//            f->input_static.bytes = f_i->output_bytes(f_i);
+//        }else{
+//            f->input_static.data = nullptr;
+//            f->input_static.bytes = 0;
+//        }
+//    }
+//    return 0;
+//}
 
 int filter_handler_push(filter_handler * fhdl,filter* f){
     if(0==(f->pos=fhdl->filters.size())){
@@ -204,11 +182,32 @@ int filter_handler_push(filter_handler * fhdl,filter* f){
     return 0;
 }
 
-///@note input is common
-void* filter_input(filter * f) { return f->input_static.data; }
-uint64_t filter_input_bytes(filter * f) { return f->input_static.bytes; }
+void* filter_input(filter * f) { 
+    if(f->pos>0){
+        auto f_i = f->hdl->filters[f->pos-1];
+        return f_i->output(f_i);
+    }
+    return nullptr; 
+}
+
+uint64_t filter_input_bytes(filter * f) { 
+    if(f->pos>0){
+        auto f_i = f->hdl->filters[f->pos-1];
+        return f_i->output_bytes(f_i);
+    }
+    return 0;
+}
 int filter_database_save(filter * f){
-    if(0== !f->db + !f->save) return f->db->save(f->db);
+    if(0== !f->db + !f->save){
+        
+        auto out = (const char *) f->output(f);
+        f->db->set_output(f->db, out, out + f->output_bytes(f));
+    
+        auto in = (const char *) f->input(f);
+        f->db->set_input(f->db, in, in + f->input_bytes(f));
+        
+        return f->db->save(f->db);
+    } 
     return 0;
 }
 
@@ -278,12 +277,6 @@ int filter_database_handler_save(filter_database_handler * hdl){
 
 
 
-//struct filter_lookup_table;
-//struct filter_lookup_elem{
-//    const char * key = 0; 
-//    void * value = nullptr;
-//}__attribute__((aligned(8)));
-
 void * filter_lookup(filter_lookup_table * flookup_table,const char * key){
     // sorting is bad for this process. i neither want  not to change the order of the flookup_table nor to copy it 
     auto arr = reinterpret_cast<char **>(flookup_table);
@@ -293,16 +286,6 @@ void * filter_lookup(filter_lookup_table * flookup_table,const char * key){
     }
     return nullptr;
 }
-
-
-
-
-
-
-
-
-
-
 
 
 constexpr static const char * kCreateSt             = "create table if not exists m([rowid] interger primary key,[k] blob,[v] blob,unique([k])) ";

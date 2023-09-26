@@ -33,8 +33,6 @@ struct filter_lookup_table_subtract{
     filter_lookup_elem main{.key="fmain"};
     filter_lookup_elem output{.key="output"};
     filter_lookup_elem output_bytes{.key="output_bytes"};
-    filter_lookup_elem input{.key="input"};
-    filter_lookup_elem input_bytes{.key="input_bytes"};
     filter_lookup_elem database_type{.key="database_type"};
     filter_lookup_elem id{.key="id"};
     filter_lookup_elem id_hr{.key="id_hr"};
@@ -60,8 +58,12 @@ extern "C" int fmain(filter * f) {
 
 
 
-extern "C" uint64_t output_bytes(filter * f) { return m(f)->res.size()*sizeof(double); }
-extern "C" void* output(filter * f) { return m(f)->res.data(); }
+extern "C" uint64_t output_bytes(filter * f) { 
+    return m(f)->res.size()*sizeof(double); 
+}
+extern "C" void* output(filter * f) { 
+    return m(f)->res.data(); 
+}
 extern "C" const char* id(filter * f) { return FILTER_ID; }
 extern "C" const char* id_hr(filter * f) { return FILTER_ID_HR; }
 extern "C" int database_type(filter * f){ return FILTER_DATABASE_TYPE_SQLITE3; }
@@ -99,63 +101,6 @@ void* filter_first_output(filter * f){
 uint64_t filter_first_output_bytes(filter * f){
     return reinterpret_cast<filter_first*>(f->m)->o_bytes;
 }
-
-uint64_t filter_first_output_length(filter * f){
-    return reinterpret_cast<filter_first*>(f->m)->o_length;
-}
-
-//filter_database_handler* filter_database_handler_initialize(filter * f){
-//    if(f->database_type){
-//        auto res = new filter_database_handler{};
-//        switch(f->database_type(f)){
-//            case FILTER_DATABASE_TYPE_SQLITE3:{
-//                res->type = f->database_type(f);
-//                res->instance = filter_database_sqlite_initialize();
-//                return res;
-//            };
-//        }
-//    }// database_type
-//    return nullptr;
-//}
-//
-//
-//void filter_database_handler_free(filter * f){
-//    if(f->db) {
-//        if (f->database_type) {
-//            switch (f->database_type(f)){
-//                case FILTER_DATABASE_TYPE_SQLITE3:filter_database_sqlite_free(f->db->instance);
-//            };
-//            delete f->db;
-//        } // database_type
-//    }// db
-//    f->db=nullptr;
-//}
-
-//
-//int filter_database_reset(filter * f){
-//    if(f->db) {
-//        f->db->set_option(f->db,f->option); // assume want to overwrite paticular range
-//        f->db->set_io_length(f->db, f->hdl->io_len);
-//        f->db->set_uri(f->db, f->hdl->local_uri.data(), f->id_hr(f));
-//
-//        auto out = (const char *) f->output(f);
-//        f->db->set_output(f->db, out, out + f->output_bytes(f));
-//
-//        auto in = (const char *) f->input(f);
-//        f->db->set_input(f->db, in, in + f->input_bytes(f));
-//        
-//        auto initialized=(f->option == f->db->last_option); 
-//        if(!initialized | bool(!f->db->reset)){  // (0) not initialized, (1) option is changed (2) reset is not defiend
-//            f->db = f->db->alloc(f);
-//            f->db->free(f->db);
-//            f->db->last_option = f->option;
-//            return f->db->setup(f->db); 
-//        }
-//        if(f->db->reset) return f->db->reset(f->db);
-//    }
-//    return 0;
-//}
-//int filter_database_setup(filter * f) { return filter_database_reset(f); }
 
 
 int main(){
@@ -198,11 +143,9 @@ int main(){
         f.option=FILTER_DATABASE_OPTION_OVERWRITE | FILTER_DATABASE_OPTION_WITHOUT_ROWID;
     }
 
-    
     {
         filter_handler_push(fhdl,&input);
         filter_handler_push(fhdl,&f);
-        filter_handler_link(fhdl);
     }
     
     f.setup_database(&f);

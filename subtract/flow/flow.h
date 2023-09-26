@@ -16,7 +16,7 @@ struct filter_lookup_elem;
 
 filter_handler* filter_handler_initialize();
 void filter_handler_free(filter_handler * fhdl);
-int filter_handler_link(filter_handler * fhdl);
+//int filter_handler_link(filter_handler * fhdl);
 int filter_handler_push(filter_handler * fhdl,filter* f);
 void filter_handler_set_io_length(filter_handler * hdl,uint64_t);
 void filter_handler_set_local_uri(filter_handler * hdl,const char * uri);
@@ -29,7 +29,7 @@ void * filter_lookup(filter_lookup_table * flookup_table,const char * key);
 
 
 struct filter_lookup_table{};
-struct filter_input_static{ void * data=0;uint64_t bytes=0; };
+//struct filter_input_static{ void * data=0;uint64_t bytes=0; };
 struct filter_lookup_elem{
     const char * key = 0; 
     void * value = nullptr;
@@ -47,7 +47,7 @@ struct filter{
     int (*setup_database)(filter *)=filter_database_setup;
     int (*save)(filter *)=filter_database_save;
     void* m=0;
-    filter_input_static input_static; // short cut to filter
+//    filter_input_static input_static; // short cut to filter
     filter_database_handler * db=0;
     filter_handler * hdl=0;
     int option=0;

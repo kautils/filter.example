@@ -196,7 +196,7 @@ int filter_database_sqlite_set_input(void * whdl,const void * begin,const void *
 int filter_database_sqlite_set_io_length(void * whdl,uint64_t len);
 int filter_database_sqlite_save(void * whdl);
 int filter_database_sqlite_sw_overwrite(void * whdl,bool sw); 
-int filter_database_sqlite_without_sw_rowid(void * whdl,bool sw); 
+int filter_database_sqlite_sw_without_rowid(void * whdl,bool sw); 
 
 
 filter_database_handler* filter_database_handler_initialize(filter * f){
@@ -213,7 +213,7 @@ filter_database_handler* filter_database_handler_initialize(filter * f){
                 res->setup = filter_database_sqlite_setup;
                 res->save = filter_database_sqlite_save;
                 res->sw_overwrite = filter_database_sqlite_sw_overwrite;
-                res->sw_without_rowid = filter_database_sqlite_without_sw_rowid;
+                res->sw_without_rowid = filter_database_sqlite_sw_without_rowid;
                 
                 res->free = filter_database_sqlite_free;
                 return res;
@@ -300,8 +300,6 @@ void * filter_lookup_table_get_value(filter_lookup_table * flookup_table,const c
 
 
 
-
-
 constexpr static const char * kCreateSt             = "create table if not exists m([rowid] interger primary key,[k] blob,[v] blob,unique([k])) ";
 constexpr static const char * kCreateStWithoutRowid = "create table if not exists m([k] blob primary key,[v] blob) without rowid ";
 static const char * kInsertSt = "insert or ignore into m(k,v) values(?,?)";
@@ -318,6 +316,14 @@ void* filter_database_sqlite_initialize(){
     return res;
 }
 
+void filter_database_sqlite_free(void* whdl){
+    auto m=get_instance(whdl);
+    delete m->op;
+    delete m->sql;
+    delete m;
+}
+
+
 //int filter_database_sqlite_reset(void* whdl){ return 0; }
 
 int filter_database_sqlite_set_uri(void * whdl,const char * prfx,const char * id){
@@ -325,13 +331,6 @@ int filter_database_sqlite_set_uri(void * whdl,const char * prfx,const char * id
     m->uri_prfx = prfx; 
     m->id = id; 
     return 0;
-}
-
-void filter_database_sqlite_free(void* whdl){
-    auto m=get_instance(whdl);
-    delete m->op;
-    delete m->sql;
-    delete m;
 }
 
 int filter_database_sqlite_setup(void * whdl){
@@ -396,7 +395,7 @@ int filter_database_sqlite_sw_overwrite(void * whdl,bool sw){
     return 0;
 }
 
-int filter_database_sqlite_without_sw_rowid(void * whdl,bool sw){
+int filter_database_sqlite_sw_without_rowid(void * whdl,bool sw){
     auto m=get_instance(whdl);
     m->is_without_rowid=sw;
     return 0;
@@ -429,6 +428,35 @@ int filter_database_sqlite_save(void * whdl){
         }
     }else m->sql->error_msg();
     return 1;
+}
+
+
+
+struct filter_lookup_table_database_sqlite{
+    filter_lookup_elem initialize{.key="initialize",.value=(void*)filter_database_sqlite_initialize};
+    filter_lookup_elem free{.key="free",.value=(void*)filter_database_sqlite_free};
+    filter_lookup_elem set_uri{.key="set_uri",.value=(void*)filter_database_sqlite_set_uri};
+    filter_lookup_elem setup{.key="setup",.value=(void*)filter_database_sqlite_setup};
+    filter_lookup_elem set_output{.key="set_output",.value=(void*)filter_database_sqlite_set_output};
+    filter_lookup_elem set_input{.key="set_input",.value=(void*)filter_database_sqlite_set_input};
+    filter_lookup_elem set_io_length{.key="set_io_length",.value=(void*)filter_database_sqlite_set_io_length};
+    filter_lookup_elem sw_overwrite{.key="sw_overwrite",.value=(void*)filter_database_sqlite_sw_overwrite};
+    filter_lookup_elem sw_rowid{.key="sw_without_rowid",.value=(void*)filter_database_sqlite_sw_without_rowid};
+    filter_lookup_elem save{.key="save",.value=(void*)filter_database_sqlite_save};
+    filter_lookup_elem member{.key="member",.value=(void*)filter_database_sqlite_initialize()};
+    filter_lookup_elem sentinel{.key=nullptr,.value=nullptr};
+} __attribute__((aligned(8)));
+
+
+extern "C" filter_lookup_table * __lookup_tb_initialize(){ 
+    auto res= new filter_lookup_table_database_sqlite{}; 
+    return reinterpret_cast<filter_lookup_table*>(res);
+}
+
+extern "C" void __lookup_tb_free(filter_lookup_table * f){
+    auto entity = reinterpret_cast<filter_lookup_table_database_sqlite*>(f);
+    delete reinterpret_cast<filter_database_sqlite3_handler*>(entity->member.value);
+    delete entity; 
 }
 
 

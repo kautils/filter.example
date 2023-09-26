@@ -25,7 +25,7 @@ struct filter_lookup_table_subtract{
     filter_lookup_elem sentinel{.key=nullptr,.value=nullptr};
 } __attribute__((aligned(8)));
 
-extern "C" int fmain(filter * f) {
+/*extern "C" */int fmain(filter * f) {
     auto arr = reinterpret_cast<double*>(f->input(f));
     auto len = f->input_bytes(f)/sizeof(double);
     
@@ -41,16 +41,14 @@ extern "C" int fmain(filter * f) {
 }
 
 
+/*extern "C" */uint64_t output_bytes(filter * f) { return m(f)->res.size()*sizeof(double); }
+/*extern "C" */void* output(filter * f) { return m(f)->res.data(); }
+/*extern "C" */const char* id(filter * f) { return FILTER_ID; }
+/*extern "C" */const char* id_hr(filter * f) { return FILTER_ID_HR; }
+/*extern "C" */int database_type(filter * f){ return FILTER_DATABASE_TYPE_SQLITE3; }
 
 
-extern "C" uint64_t output_bytes(filter * f) { return m(f)->res.size()*sizeof(double); }
-extern "C" void* output(filter * f) { return m(f)->res.data(); }
-extern "C" const char* id(filter * f) { return FILTER_ID; }
-extern "C" const char* id_hr(filter * f) { return FILTER_ID_HR; }
-extern "C" int database_type(filter * f){ return FILTER_DATABASE_TYPE_SQLITE3; }
-
-
-filter_lookup_table * lookup_tb_initialize(){ 
+extern "C" filter_lookup_table * lookup_tb_initialize(){ 
     auto res= new filter_lookup_table_subtract{}; 
     res->main.value = (void*)fmain;
     res->output.value = (void*)output;
@@ -62,10 +60,10 @@ filter_lookup_table * lookup_tb_initialize(){
     return reinterpret_cast<filter_lookup_table*>(res);
 }
 
-void lookup_tb_free(filter_lookup_table * f){
-    auto m = reinterpret_cast<filter_lookup_table_subtract*>(f)->member;
-    delete reinterpret_cast<subtract*>(m.value);
-    delete f; 
+extern "C" void lookup_tb_free(filter_lookup_table * f){
+    auto entity = reinterpret_cast<filter_lookup_table_subtract*>(f);
+    delete reinterpret_cast<subtract*>(entity->member.value);
+    delete entity; 
 }
 
 int main(){

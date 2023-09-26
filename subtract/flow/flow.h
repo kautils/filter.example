@@ -19,27 +19,24 @@ int filter_handler_push(filter_handler * fhdl,filter* f);
 int filter_handler_push_with_lookup_table(filter_handler * fhdl
                                           ,filter_lookup_table * (*filter_lookup_table_initialize)()
                                           ,void (*filter_lookup_table_free)(filter_lookup_table * f));
-
 int filter_handler_execute(filter_handler * fhdl);
-filter * filter_handler_lookup(filter_handler * fhdl,filter_lookup_table * (*filter_lookup_table_initialize)());
-
-
+filter * filter_handler_lookup(filter_handler * fhdl,filter_lookup_table * );
 void filter_handler_set_io_length(filter_handler * hdl,uint64_t);
 void filter_handler_set_local_uri(filter_handler * hdl,const char * uri);
-int filter_database_setup(filter * f);
-int filter_database_save(filter * f);
-
-void* filter_input(filter * f);
-uint64_t filter_input_bytes(filter * f);
-void * filter_lookup(filter_lookup_table * flookup_table,const char * key);
 
 
 struct filter_lookup_table{};
-//struct filter_input_static{ void * data=0;uint64_t bytes=0; };
 struct filter_lookup_elem{
     const char * key = 0; 
     void * value = nullptr;
 }__attribute__((aligned(8)));
+
+
+void* filter_input(filter * f);
+uint64_t filter_input_bytes(filter * f);
+void * filter_lookup(filter_lookup_table * flookup_table,const char * key);
+int filter_database_setup(filter * f);
+int filter_database_save(filter * f);
 
 struct filter{
     int (*main)(filter * m)=0;
@@ -53,42 +50,10 @@ struct filter{
     int (*setup_database)(filter *)=filter_database_setup;
     int (*save)(filter *)=filter_database_save;
     void* m=0;
-//    filter_input_static input_static; // short cut to filter
     filter_database_handler * db=0;
     filter_handler * hdl=0;
     int option=0;
-//    int pos=-1;
 } __attribute__((aligned(8)));
-
-
-
-filter_database_handler* filter_database_handler_initialize(filter * f);
-void filter_database_handler_free(filter_database_handler * hdl);
-int filter_database_handler_set_uri(filter_database_handler * hdl,const char * prfx,const char * id);
-int filter_database_handler_setup(filter_database_handler * hdl);
-int filter_database_handler_set_output(filter_database_handler * hdl,const void * begin,const void * end);
-int filter_database_handler_set_input(filter_database_handler * hdl,const void * begin,const void * end);
-int filter_database_handler_set_io_length(filter_database_handler * hdl,uint64_t);
-int filter_database_handler_save(filter_database_handler * hdl);
-int filter_database_handler_set_option(filter_database_handler * hdl,int op);
-
-
-struct filter_database_handler{
-    int (*set_uri)(filter_database_handler * hdl,const char * prfx,const char * id)=filter_database_handler_set_uri;
-    filter_database_handler* (*alloc)(filter * f)=filter_database_handler_initialize;
-    void (*free)(filter_database_handler * hdl)=filter_database_handler_free;
-    int (*setup)(filter_database_handler * hdl)=filter_database_handler_setup;
-    int (*set_output)(filter_database_handler * hdl,const void * begin,const void * end)=filter_database_handler_set_output;
-    int (*set_input)(filter_database_handler * hdl,const void * begin,const void * end)=filter_database_handler_set_input;
-    int (*set_io_length)(filter_database_handler * hdl,uint64_t)=filter_database_handler_set_io_length;
-    int (*save)(filter_database_handler * hdl)=filter_database_handler_save;
-    int (*set_option)(filter_database_handler * hdl,int op)=filter_database_handler_set_option;
-    int type=0;
-    void * instance=0;
-    int last_option=-1;
-};
-
-
 
 
 

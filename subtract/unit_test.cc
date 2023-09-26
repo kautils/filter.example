@@ -6,21 +6,6 @@
 #include "kautil/cache/virtual_file/virtual_file.h"
 #include "flow.h"
 
-// +++++++++++++++++++++ temporal +++++++++++++++++++++ 
-// +++++++++++++++++++++ temporal +++++++++++++++++++++ 
-// +++++++++++++++++++++ temporal +++++++++++++++++++++ 
-struct filter_handler{ 
-    filter * previous=0;
-    filter * current=0;
-    std::vector<filter*> filters;
-    std::string local_uri;
-    uint64_t io_len=0;
-};
-// +++++++++++++++++++++ temporal +++++++++++++++++++++ 
-// +++++++++++++++++++++ temporal +++++++++++++++++++++ 
-// +++++++++++++++++++++ temporal +++++++++++++++++++++ 
-
-
 
 struct subtract{
     std::vector<double> res;
@@ -83,8 +68,6 @@ void lookup_tb_free(filter_lookup_table * f){
     delete f; 
 }
 
-
-
 struct filter_first{
     void * o=0;
     uint64_t o_bytes=0;
@@ -118,12 +101,6 @@ int main(){
         input.output_bytes=filter_first_output_bytes;
     }
     
-    
-    using output_t = void*(*)(filter *);
-    using output_bytes_t = uint64_t(*)(filter *);
-    using filter_id_t = const char* (*)(filter *);
-    using database_type_t = int (*)(filter *);
-
     auto fhdl = filter_handler_initialize();
     filter_handler_set_io_length(fhdl,input_len);
     filter_handler_set_local_uri(fhdl,"./");
@@ -133,6 +110,7 @@ int main(){
         filter_handler_push_with_lookup_table(fhdl,lookup_tb_initialize,lookup_tb_free);
         filter_handler_execute(fhdl);
     }
+    
     filter_handler_free(fhdl);
     
     delete [] (double*)i->o;

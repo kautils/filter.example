@@ -8,6 +8,35 @@
 #include "sys/stat.h"
 
 
+
+filter_database_handler* filter_database_handler_initialize(filter * f);
+void filter_database_handler_free(filter_database_handler * hdl);
+int filter_database_handler_set_uri(filter_database_handler * hdl,const char * prfx,const char * id);
+int filter_database_handler_setup(filter_database_handler * hdl);
+int filter_database_handler_set_output(filter_database_handler * hdl,const void * begin,const void * end);
+int filter_database_handler_set_input(filter_database_handler * hdl,const void * begin,const void * end);
+int filter_database_handler_set_io_length(filter_database_handler * hdl,uint64_t);
+int filter_database_handler_save(filter_database_handler * hdl);
+int filter_database_handler_set_option(filter_database_handler * hdl,int op);
+
+
+struct filter_database_handler{
+    int (*set_uri)(filter_database_handler * hdl,const char * prfx,const char * id)=filter_database_handler_set_uri;
+    filter_database_handler* (*alloc)(filter * f)=filter_database_handler_initialize;
+    void (*free)(filter_database_handler * hdl)=filter_database_handler_free;
+    int (*setup)(filter_database_handler * hdl)=filter_database_handler_setup;
+    int (*set_output)(filter_database_handler * hdl,const void * begin,const void * end)=filter_database_handler_set_output;
+    int (*set_input)(filter_database_handler * hdl,const void * begin,const void * end)=filter_database_handler_set_input;
+    int (*set_io_length)(filter_database_handler * hdl,uint64_t)=filter_database_handler_set_io_length;
+    int (*save)(filter_database_handler * hdl)=filter_database_handler_save;
+    int (*set_option)(filter_database_handler * hdl,int op)=filter_database_handler_set_option;
+    int type=0;
+    void * instance=0;
+    int last_option=-1;
+};
+
+
+
 using output_t = void*(*)(filter *);
 using output_bytes_t = uint64_t(*)(filter *);
 using filter_id_t = const char* (*)(filter *);

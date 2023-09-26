@@ -19,6 +19,9 @@ struct filter_handler{
     uint64_t io_len=0;
 };
 
+
+
+
 struct filter_database_handler;
 void filter_database_handler_free(filter_database_handler * hdl);
 int filter_database_handler_set_uri(filter_database_handler * hdl,const char * prfx,const char * id);
@@ -27,6 +30,7 @@ int filter_database_handler_set_output(filter_database_handler * hdl,const void 
 int filter_database_handler_set_input(filter_database_handler * hdl,const void * begin,const void * end);
 int filter_database_handler_set_io_length(filter_database_handler * hdl,uint64_t);
 int filter_database_handler_save(filter_database_handler * hdl);
+int filter_database_handler_set_option(filter_database_handler * hdl,int op);
 
 
 
@@ -38,9 +42,15 @@ int filter_database_sqlite_set_output(void * whdl,const void * begin,const void 
 int filter_database_sqlite_set_input(void * whdl,const void * begin,const void * end);
 int filter_database_sqlite_set_io_length(void * whdl,uint64_t len);
 int filter_database_sqlite_save(void * whdl);
+//the reason why i don't use bitwise is i want to hide definitions of filter_database_handler including macro  
+int filter_database_sqlite_overwrite_sw(void * whdl,bool sw); 
+int filter_database_sqlite_without_rowid_sw(void * whdl,bool sw); 
 
+#define FILTER_DATABASE_OPTION_OVERWRITE 1 // ignore / overwrite
+#define FILTER_DATABASE_OPTION_WITHOUT_ROWID 2 // not use rowid, if database dose not support rowid, then shoudl be ignored (e.g : in case of using filesystem directlly).
 
 #define FILTER_DATABASE_TYPE_SQLITE3 1
+
 struct filter_database_handler{
     int (*set_uri)(filter_database_handler * hdl,const char * prfx,const char * id)=filter_database_handler_set_uri;
     void (*free)(filter_database_handler * hdl)=filter_database_handler_free;
@@ -49,10 +59,24 @@ struct filter_database_handler{
     int (*set_input)(filter_database_handler * hdl,const void * begin,const void * end)=filter_database_handler_set_input;
     int (*set_io_length)(filter_database_handler * hdl,uint64_t)=filter_database_handler_set_io_length;
     int (*save)(filter_database_handler * hdl)=filter_database_handler_save;
+    int (*set_option)(filter_database_handler * hdl,int op)=filter_database_handler_set_option;
     int type=0;
     void * instance=0;
 };
 
+
+int filter_database_handler_set_option(filter_database_handler * hdl,int op){
+    auto op_ow = op & FILTER_DATABASE_OPTION_OVERWRITE;
+    auto op_norowid = op & FILTER_DATABASE_OPTION_WITHOUT_ROWID;
+    switch(hdl->type){
+        case FILTER_DATABASE_TYPE_SQLITE3: {
+            int res= 
+                  filter_database_sqlite_overwrite_sw(hdl->instance,op_ow)
+                | filter_database_sqlite_without_rowid_sw(hdl->instance,op_norowid);
+        }
+    }
+    return 1;    
+}
 
 int filter_database_handler_set_uri(filter_database_handler * hdl,const char * prfx,const char * id){
     switch(hdl->type){
@@ -122,9 +146,10 @@ uint64_t filter_input_bytes(filter * f) {
 
 
 
-
-static const char * kCreateSt = "create table if not exists m([rowid] primary key,[k] blob,[v] blob,unique([k])) ";
+constexpr static const char * kCreateSt             = "create table if not exists m([rowid] interger primary key,[k] blob,[v] blob,unique([k])) ";
+constexpr static const char * kCreateStWithoutRowid = "create table if not exists m([k] blob primary key,[v] blob) without rowid ";
 static const char * kInsertSt = "insert or ignore into m(k,v) values(?,?)";
+static const char * kInsertStOw = "insert or replace into m(k,v) values(?,?)";
 
 
 struct io_data{
@@ -144,11 +169,12 @@ struct filter_database_sqlite3_handler{
     io_data i;
     io_data o;
     uint64_t io_len=0;
+    bool is_overwrite=false;
+    bool is_without_rowid=false;
 };
 
 
 filter_database_sqlite3_handler* get_instance(void * whdl){
-//    return reinterpret_cast<filter_database_sqlite3_handler*>(reinterpret_cast<filter_database_handler*>(whdl)->instance);
     return reinterpret_cast<filter_database_sqlite3_handler*>(whdl);
 }
 
@@ -192,17 +218,16 @@ int filter_database_sqlite_setup(void * whdl){
         }
         m->op = kautil::database::sqlite3::sqlite_options(); 
         m->sql = new kautil::database::Sqlite3{path.data(),m->op->sqlite_open_create()|m->op->sqlite_open_readwrite()|m->op->sqlite_open_nomutex()};
-        m->create = m->sql->compile(kCreateSt);
+        m->create = m->sql->compile(m->is_without_rowid ? kCreateStWithoutRowid : kCreateSt);
         if(m->create){
             auto res_crt = m->create->step(true);
             res_crt |= ((m->create->step(true) == m->op->sqlite_ok()));
             if(res_crt){
-                if(m->insert = m->sql->compile(kInsertSt)){
-                    return 0;
-                }
+                return !bool(m->insert = m->sql->compile(m->is_overwrite ? kInsertStOw : kInsertSt));
             }
         }
     }
+    m->sql->error_msg();
     delete m->op;
     delete m->sql;
     m->op=nullptr;
@@ -229,6 +254,18 @@ int filter_database_sqlite_set_input(void * whdl,const void * begin,const void *
 int filter_database_sqlite_set_io_length(void * whdl,uint64_t len){
     auto m=get_instance(whdl);
     m->io_len= len;
+    return 0;
+}
+
+int filter_database_sqlite_overwrite_sw(void * whdl,bool sw){
+    auto m=get_instance(whdl);
+    m->is_overwrite=sw;
+    return 0;
+}
+
+int filter_database_sqlite_without_rowid_sw(void * whdl,bool sw){
+    auto m=get_instance(whdl);
+    m->is_without_rowid=sw;
     return 0;
 }
 
@@ -260,54 +297,6 @@ int filter_database_sqlite_save(void * whdl){
     }else m->sql->error_msg();
     return 1;
 }
-
-//
-//int filter_database_sqlite(filter* f){
-//    auto db=reinterpret_cast<filter_database_sqlite3_handler*>(f->database);
-//    if(!m->sql) {
-//        auto path = f->hdl->local_uri +"/" + f->id_hr(f) + ".sqlite";
-//        {
-//            struct stat st;
-//            auto buf = std::string(path.data());
-//            auto dir = dirname(buf.data());
-//            if(stat(dir,&st)){
-//                if(mkdir(dir)){
-//                    printf("fail");
-//                    return 1;
-//                }
-//            } 
-//        }
-//        m->op = kautil::database::sqlite3::sqlite_options(); 
-//        m->sql = new kautil::database::Sqlite3{path.data(),m->op->sqlite_open_create()|m->op->sqlite_open_readwrite()|m->op->sqlite_open_nomutex()};
-//        m->create = m->sql->compile(kCreateSt);
-//        m->insert = m->sql->compile(kInsertSt);
-//    }
-//
-//
-//    m->create->step(true);
-//    if(auto begin_i = reinterpret_cast<char*>(f->input(f))){
-//        auto end_i = reinterpret_cast<char*>(f->input(f)) + f->input_bytes(f);
-//        auto block_i = (end_i - begin_i) / f->hdl->io_len;
-//
-//        if(auto begin_o = reinterpret_cast<const char*>(f->output(f))){
-//            auto end_o = reinterpret_cast<const char*>(f->output(f)) + f->output_bytes(f);
-//            auto block_o = (end_o - begin_o) / f->hdl->io_len;
-//            auto fail = false;
-//            m->sql->begin_transaction();
-//            for(;begin_i != end_i; begin_i+=block_i,begin_o+=block_o){
-//                auto res_stmt = !m->insert->set_blob(1,begin_i,block_i) + !m->insert->set_blob(2,begin_o,block_o);
-//                auto res_step = m->insert->step(true);
-//                res_step = res_step != m->op->sqlite_ok();
-//                if((fail=res_stmt+res_step))break;
-//            }
-//            if(fail) m->sql->roll_back();
-//            m->sql->end_transaction();
-//            return 0;
-//        }
-//        return 1;
-//    }else m->sql->error_msg();
-//    return 1;
-//}
 
 
 
@@ -360,7 +349,7 @@ extern "C" int fmain(filter * f) {
     if(m(f)->res.size() < len) m(f)->res.resize(len);
     m(f)->len=len;
     for(auto i = 0; i < len ; i++){
-        m(f)->res[i] = arr[i];
+        m(f)->res[i] = arr[i]+123456789;
     }
     return 0;
 }
@@ -392,9 +381,6 @@ void filter_lookup_table_free(filter_lookup_table * f){
     delete f; 
 }
 
-
-#define __begin_cycle
-#define __end_cycle
 
 
 
@@ -479,8 +465,6 @@ int main(){
     f.m= filter_lookup(flookup,"member");
     f.db = filter_database_handler_initialize(&f);
     
-    f.db->set_io_length(f.db,100);
-    
     
     fhdl.filters.push_back(&input);
     fhdl.filters.push_back(&f);
@@ -498,8 +482,8 @@ int main(){
         f->main(f);
         if(f->db){
             
-            
-            // ignore / overwrite
+            f->db->set_option(f->db, FILTER_DATABASE_OPTION_OVERWRITE | FILTER_DATABASE_OPTION_WITHOUT_ROWID);
+            f->db->set_io_length(f->db,input_len);
             f->db->set_uri(f->db,f->hdl->local_uri.data(),f->id_hr(f));
             f->db->set_io_length(f->db,fhdl.io_len);
             auto out = (const char *) f->output(f);
@@ -508,8 +492,12 @@ int main(){
             auto in = (const char *) f->input(f);
             f->db->set_input(f->db,in,in+f->input_bytes(f));
 
-            f->db->setup(f->db);
-            f->db->save(f->db);
+            if(!f->db->setup(f->db)){
+                f->db->save(f->db);
+            }else{
+                printf("fail to setup");
+            }
+//            f->db->setup(f->db);
             
         }
     }

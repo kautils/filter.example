@@ -35,6 +35,7 @@ CMakeFetchKautilModule(sqlite
 find_package(KautilSqlite3.2.0.1.0.shared REQUIRED)
 
 
+
 set(module_name subtract)
 unset(srcs)
 file(GLOB srcs ${CMAKE_CURRENT_LIST_DIR}/*.cc)
@@ -53,6 +54,8 @@ set(${module_name}_common_pref
 
 list(APPEND ${m}_unsetter ${m}_thread_cnt)
 
+
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/flow)
 
 CMakeGitCurrentCommitHash(${m}_filter_id)
 string(SUBSTRING "${${m}_filter_id}" 0 7 ${m}_filter_short_id)
@@ -73,6 +76,7 @@ add_executable(${__t})
 target_sources(${__t} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/unit_test.cc)
 target_link_libraries(${__t} PRIVATE ${${module_name}_shared} 
         kautil::sqlite3::2.0.1.0::shared 
+        kautil_flow_0.0.1_static
 #        kautil::cache::virtual_file::0.0.1::shared
         )
 

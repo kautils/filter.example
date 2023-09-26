@@ -58,18 +58,14 @@ extern "C" int fmain(filter * f) {
 
 
 
-extern "C" uint64_t output_bytes(filter * f) { 
-    return m(f)->res.size()*sizeof(double); 
-}
-extern "C" void* output(filter * f) { 
-    return m(f)->res.data(); 
-}
+extern "C" uint64_t output_bytes(filter * f) { return m(f)->res.size()*sizeof(double); }
+extern "C" void* output(filter * f) { return m(f)->res.data(); }
 extern "C" const char* id(filter * f) { return FILTER_ID; }
 extern "C" const char* id_hr(filter * f) { return FILTER_ID_HR; }
 extern "C" int database_type(filter * f){ return FILTER_DATABASE_TYPE_SQLITE3; }
 
 
-filter_lookup_table * filter_lookup_table_initialize(){ 
+filter_lookup_table * lookup_tb_initialize(){ 
     auto res= new filter_lookup_table_subtract{}; 
     res->main.value = (void*)fmain;
     res->output.value = (void*)output;
@@ -81,7 +77,7 @@ filter_lookup_table * filter_lookup_table_initialize(){
     return reinterpret_cast<filter_lookup_table*>(res);
 }
 
-void filter_lookup_table_free(filter_lookup_table * f){
+void lookup_tb_free(filter_lookup_table * f){
     auto m = reinterpret_cast<filter_lookup_table_subtract*>(f)->member;
     delete reinterpret_cast<subtract*>(m.value);
     delete f; 
@@ -104,6 +100,8 @@ uint64_t filter_first_output_bytes(filter * f){
 
 
 int main(){
+    
+    remove("R:\\flow\\build\\android\\filter.arithmetic.subtract\\KautilFilterArithmeticSubtract.0.0.1\\4724af5.sqlite");
     
     auto input_len = 100; // all the input/output inside a chain is the same,if the result structure are counted as one data 
     auto i = new filter_first{};
@@ -129,41 +127,16 @@ int main(){
     auto fhdl = filter_handler_initialize();
     filter_handler_set_io_length(fhdl,input_len);
     filter_handler_set_local_uri(fhdl,"./");
-    auto flookup = filter_lookup_table_initialize();
-    
-    auto f = filter{};{
-        f.hdl=fhdl;
-        f.main= (decltype(f.main))filter_lookup(flookup,"fmain");
-        f.output= (output_t)filter_lookup(flookup,"output");
-        f.output_bytes= (output_bytes_t)filter_lookup(flookup,"output_bytes");
-        f.id= (filter_id_t)filter_lookup(flookup,"id");
-        f.id_hr= (filter_id_t)filter_lookup(flookup,"id_hr");
-        f.database_type =(database_type_t) filter_lookup(flookup,"database_type");
-        f.m= filter_lookup(flookup,"member");
-        f.option=FILTER_DATABASE_OPTION_OVERWRITE | FILTER_DATABASE_OPTION_WITHOUT_ROWID;
-    }
 
     {
         filter_handler_push(fhdl,&input);
-        filter_handler_push(fhdl,&f);
+        filter_handler_push_with_lookup_table(fhdl,lookup_tb_initialize,lookup_tb_free);
+        filter_handler_execute(fhdl);
     }
-    
-    f.setup_database(&f);
-    for(auto i = 1; i < fhdl->filters.size(); ++i){
-        auto f = fhdl->filters[i];
-        f->hdl->previous = f->hdl->current;
-        f->hdl->current = f;
-        f->main(f);
-        f->save(f);
-    }
-    f.db->free(f.db);
-    
-    filter_lookup_table_free(flookup);
-    delete [] (double*)i->o;
-    delete i;
-    
     filter_handler_free(fhdl);
     
+    delete [] (double*)i->o;
+    delete i;
     
     return 0;
 }

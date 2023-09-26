@@ -9,15 +9,21 @@
 
 struct filter_handler;
 struct filter_database_handler;
-struct filter_input_static;
 struct filter;
 struct filter_lookup_table;
 struct filter_lookup_elem;
 
 filter_handler* filter_handler_initialize();
 void filter_handler_free(filter_handler * fhdl);
-//int filter_handler_link(filter_handler * fhdl);
 int filter_handler_push(filter_handler * fhdl,filter* f);
+int filter_handler_push_with_lookup_table(filter_handler * fhdl
+                                          ,filter_lookup_table * (*filter_lookup_table_initialize)()
+                                          ,void (*filter_lookup_table_free)(filter_lookup_table * f));
+
+int filter_handler_execute(filter_handler * fhdl);
+filter * filter_handler_lookup(filter_handler * fhdl,filter_lookup_table * (*filter_lookup_table_initialize)());
+
+
 void filter_handler_set_io_length(filter_handler * hdl,uint64_t);
 void filter_handler_set_local_uri(filter_handler * hdl,const char * uri);
 int filter_database_setup(filter * f);
@@ -51,14 +57,13 @@ struct filter{
     filter_database_handler * db=0;
     filter_handler * hdl=0;
     int option=0;
-    int pos=-1;
+//    int pos=-1;
 } __attribute__((aligned(8)));
 
 
 
 filter_database_handler* filter_database_handler_initialize(filter * f);
 void filter_database_handler_free(filter_database_handler * hdl);
-int filter_database_handler_reset(filter_database_handler * hdl);
 int filter_database_handler_set_uri(filter_database_handler * hdl,const char * prfx,const char * id);
 int filter_database_handler_setup(filter_database_handler * hdl);
 int filter_database_handler_set_output(filter_database_handler * hdl,const void * begin,const void * end);
@@ -73,7 +78,6 @@ struct filter_database_handler{
     filter_database_handler* (*alloc)(filter * f)=filter_database_handler_initialize;
     void (*free)(filter_database_handler * hdl)=filter_database_handler_free;
     int (*setup)(filter_database_handler * hdl)=filter_database_handler_setup;
-    int (*reset)(filter_database_handler * hdl)=filter_database_handler_reset;
     int (*set_output)(filter_database_handler * hdl,const void * begin,const void * end)=filter_database_handler_set_output;
     int (*set_input)(filter_database_handler * hdl,const void * begin,const void * end)=filter_database_handler_set_input;
     int (*set_io_length)(filter_database_handler * hdl,uint64_t)=filter_database_handler_set_io_length;

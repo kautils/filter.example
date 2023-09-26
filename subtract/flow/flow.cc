@@ -8,6 +8,12 @@
 #include "sys/stat.h"
 
 
+using output_t = void*(*)(filter *);
+using output_bytes_t = uint64_t(*)(filter *);
+using filter_id_t = const char* (*)(filter *);
+using database_type_t = int (*)(filter *);
+
+
 struct io_data{ const void * begin;const void * end; };
 struct filter_database_sqlite3_handler{
     kautil::database::Sqlite3Stmt * create;
@@ -26,46 +32,106 @@ struct filter_database_sqlite3_handler{
 
 void* filter_database_sqlite_initialize();
 int filter_database_sqlite_set_uri(void * whdl,const char * prfx,const char * id);
-int filter_database_sqlite_reset(void* whdl);
 void filter_database_sqlite_free(void* whdl);
 int filter_database_sqlite_setup(void * whdl);
 int filter_database_sqlite_set_output(void * whdl,const void * begin,const void * end);
 int filter_database_sqlite_set_input(void * whdl,const void * begin,const void * end);
 int filter_database_sqlite_set_io_length(void * whdl,uint64_t len);
 int filter_database_sqlite_save(void * whdl);
-//the reason why i don't use bitwise is i want to hide definitions of filter_database_handler including macro  
 int filter_database_sqlite_overwrite_sw(void * whdl,bool sw); 
 int filter_database_sqlite_without_rowid_sw(void * whdl,bool sw); 
 
 
 
-
-
-///@note input is common
-void* filter_input(filter * f);
-uint64_t filter_input_bytes(filter * f);
-int filter_database_reset(filter * f);
-
+struct filter_handler_lookup_table{
+   filter_lookup_table * (*initialize_lookup_table)()=0;
+   void (*free_lookup_table)(filter_lookup_table * f)=0;
+   filter_lookup_table * lookup_table=0;
+   filter * filter =0;
+};
 
 struct filter_handler{ 
     filter * previous=0;
     filter * current=0;
     std::vector<filter*> filters;
+    std::vector<filter_handler_lookup_table*> lookup_releaser;
     std::string local_uri;
     uint64_t io_len=0;
 };
 
 struct filter_database_handler;
 filter_database_handler* filter_database_handler_initialize(filter * f);
-
 filter_handler* filter_handler_initialize(){ return new filter_handler{}; }
-void filter_handler_free(filter_handler * fhdl){ delete fhdl; }
+void filter_handler_free(filter_handler * fhdl){ 
+    for(auto & e : fhdl->lookup_releaser){
+        {
+            auto f = e->filter;
+            if(f->db) f->db->free(f->db);
+            delete e->filter;
+        }
+        e->free_lookup_table(e->lookup_table);
+    }
+    delete fhdl; 
+}
+
+
+filter * filter_handler_lookup(filter_handler * fhdl
+                               ,filter_lookup_table * flookup 
+                               ){
+    auto f = new filter{};{
+        f->hdl=fhdl;
+        f->main= (decltype(f->main))filter_lookup(flookup,"fmain");
+        f->output= (output_t)filter_lookup(flookup,"output");
+        f->output_bytes= (output_bytes_t)filter_lookup(flookup,"output_bytes");
+        f->id= (filter_id_t)filter_lookup(flookup,"id");
+        f->id_hr= (filter_id_t)filter_lookup(flookup,"id_hr");
+        f->database_type =(database_type_t) filter_lookup(flookup,"database_type");
+        f->m= filter_lookup(flookup,"member");
+        f->option=FILTER_DATABASE_OPTION_OVERWRITE | FILTER_DATABASE_OPTION_WITHOUT_ROWID;
+        f->setup_database(f);
+    }
+    return f;
+}
+
+int filter_handler_push_with_lookup_table(filter_handler * fhdl
+                                          ,filter_lookup_table * (*filter_lookup_table_initialize)()
+                                          ,void (*filter_lookup_table_free)(filter_lookup_table * f)
+                                          ){
+    if(auto ltb = filter_lookup_table_initialize()){
+        auto f  =filter_handler_lookup(fhdl,ltb);
+        fhdl->lookup_releaser.emplace_back(new filter_handler_lookup_table{
+            .initialize_lookup_table = filter_lookup_table_initialize
+            ,.free_lookup_table = filter_lookup_table_free
+            ,.lookup_table = ltb
+            ,.filter=f
+        });
+        if(f){
+            filter_handler_push(fhdl,f);
+            return 0;
+        }
+    }
+    return 1;
+}
+
+
+int filter_handler_execute(filter_handler * fhdl){
+    for(auto i = 1; i < fhdl->filters.size(); ++i){
+        auto f = fhdl->filters[i];
+        f->hdl->previous = f->hdl->current;
+        f->hdl->current = f;
+        f->main(f);
+        f->save(f);
+    }
+    return 0;
+}
+
+
 void filter_handler_set_io_length(filter_handler * hdl,uint64_t len){ hdl->io_len=len; }
 void filter_handler_set_local_uri(filter_handler * hdl,const char * uri){ hdl->local_uri = uri; }
 
 
 void filter_database_handler_free(filter_database_handler * hdl);
-int filter_database_handler_reset(filter_database_handler * hdl);
+//int filter_database_handler_reset(filter_database_handler * hdl);
 int filter_database_handler_set_uri(filter_database_handler * hdl,const char * prfx,const char * id);
 int filter_database_handler_setup(filter_database_handler * hdl);
 int filter_database_handler_set_output(filter_database_handler * hdl,const void * begin,const void * end);
@@ -73,25 +139,6 @@ int filter_database_handler_set_input(filter_database_handler * hdl,const void *
 int filter_database_handler_set_io_length(filter_database_handler * hdl,uint64_t);
 int filter_database_handler_save(filter_database_handler * hdl);
 int filter_database_handler_set_option(filter_database_handler * hdl,int op);
-
-
-
-//struct filter_database_handler{
-//    int (*set_uri)(filter_database_handler * hdl,const char * prfx,const char * id)=filter_database_handler_set_uri;
-//    filter_database_handler* (*alloc)(filter * f)=filter_database_handler_initialize;
-//    void (*free)(filter_database_handler * hdl)=filter_database_handler_free;
-//    int (*setup)(filter_database_handler * hdl)=filter_database_handler_setup;
-//    int (*reset)(filter_database_handler * hdl)=filter_database_handler_reset;
-//    int (*set_output)(filter_database_handler * hdl,const void * begin,const void * end)=filter_database_handler_set_output;
-//    int (*set_input)(filter_database_handler * hdl,const void * begin,const void * end)=filter_database_handler_set_input;
-//    int (*set_io_length)(filter_database_handler * hdl,uint64_t)=filter_database_handler_set_io_length;
-//    int (*save)(filter_database_handler * hdl)=filter_database_handler_save;
-//    int (*set_option)(filter_database_handler * hdl,int op)=filter_database_handler_set_option;
-//    int type=0;
-//    void * instance=0;
-//    int last_option=-1;
-//};
-//
 
 
 
@@ -111,38 +158,20 @@ filter_database_handler* filter_database_handler_initialize(filter * f){
 
 
 
-int filter_database_reset(filter * f){
-    
-    auto initialized = false;
+int filter_database_setup(filter * f) { 
     if(!f->db) f->db = filter_database_handler_initialize(f); 
     else{
-        initialized=(f->option == f->db->last_option); 
-        if(!f->db->reset){  // (0) not initialized, (1) option is changed (2) reset is not defiend
-            f->db->free(f->db);
-            f->db=f->db->alloc(f);
-        }
+        f->db->free(f->db);
+        f->db=f->db->alloc(f);
     }
     
     f->db->set_option(f->db,f->option); // assume want to overwrite paticular range
     f->db->set_io_length(f->db, f->hdl->io_len);
     f->db->set_uri(f->db, f->hdl->local_uri.data(), f->id_hr(f));
 
-//    auto out = (const char *) f->output(f);
-//    f->db->set_output(f->db, out, out + f->output_bytes(f));
-//
-//    auto in = (const char *) f->input(f);
-//    f->db->set_input(f->db, in, in + f->input_bytes(f));
-    
-    if(!initialized | bool(!f->db->reset)){  // (0) not initialized, (1) option is changed (2) reset is not defiend
-        f->db->last_option = f->option;
-        return f->db->setup(f->db); 
-    }
-    if(f->db->reset) return f->db->reset(f->db);
-//    }
-    return 0;
+    f->db->last_option = f->option;
+    return f->db->setup(f->db); 
 }
-
-int filter_database_setup(filter * f) { return filter_database_reset(f); }
 
 
 void filter_database_handler_free(filter * f){
@@ -159,22 +188,8 @@ void filter_database_handler_free(filter * f){
 
 
 
-//int filter_handler_link(filter_handler * fhdl){
-//    for(auto & f : fhdl->filters) {
-//        if(f->pos>0){
-//            auto f_i = f->hdl->filters[f->pos-1];
-//            f->input_static.data = f_i->output(f_i);
-//            f->input_static.bytes = f_i->output_bytes(f_i);
-//        }else{
-//            f->input_static.data = nullptr;
-//            f->input_static.bytes = 0;
-//        }
-//    }
-//    return 0;
-//}
-
 int filter_handler_push(filter_handler * fhdl,filter* f){
-    if(0==(f->pos=fhdl->filters.size())){
+    if(0==(fhdl->filters.empty())){
         fhdl->previous= nullptr;
         fhdl->current= f;
     }
@@ -183,19 +198,14 @@ int filter_handler_push(filter_handler * fhdl,filter* f){
 }
 
 void* filter_input(filter * f) { 
-    if(f->pos>0){
-        auto f_i = f->hdl->filters[f->pos-1];
-        return f_i->output(f_i);
+    if(f->hdl->previous){
+        return f->hdl->previous->output(f->hdl->previous);
     }
     return nullptr; 
 }
 
 uint64_t filter_input_bytes(filter * f) { 
-    if(f->pos>0){
-        auto f_i = f->hdl->filters[f->pos-1];
-        return f_i->output_bytes(f_i);
-    }
-    return 0;
+    return f->hdl->previous->output_bytes(f->hdl->previous);
 }
 int filter_database_save(filter * f){
     if(0== !f->db + !f->save){
@@ -226,13 +236,6 @@ int filter_database_handler_set_option(filter_database_handler * hdl,int op){
     return 1;    
 }
 
-
-int filter_database_handler_reset(filter_database_handler * hdl){
-    switch(hdl->type){
-        case FILTER_DATABASE_TYPE_SQLITE3: return  filter_database_sqlite_reset(hdl->instance);
-    }
-    return 1;
-}
 int filter_database_handler_set_uri(filter_database_handler * hdl,const char * prfx,const char * id){
     switch(hdl->type){
         case FILTER_DATABASE_TYPE_SQLITE3: return  filter_database_sqlite_set_uri(hdl->instance,prfx,id);
@@ -307,7 +310,7 @@ void* filter_database_sqlite_initialize(){
     return res;
 }
 
-int filter_database_sqlite_reset(void* whdl){ return 0; }
+//int filter_database_sqlite_reset(void* whdl){ return 0; }
 
 int filter_database_sqlite_set_uri(void * whdl,const char * prfx,const char * id){
     auto m=get_instance(whdl);

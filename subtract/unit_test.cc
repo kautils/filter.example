@@ -81,18 +81,13 @@ int main(){
     filter_handler_set_local_uri(fhdl,"./");
 
     {
-//        filter_handler_push(fhdl,&input);
         filter_handler_input(fhdl,arr,sizeof(double));
         filter_handler_push_with_lookup_table(fhdl,lookup_tb_initialize,lookup_tb_free);
         filter_handler_execute(fhdl);
     }
     
-    printf("AAAAAAAAAAAA");
     filter_handler_free(fhdl);
-    
     delete [] (double*) arr;
-//    delete i;
-    
 
 
     return 0;

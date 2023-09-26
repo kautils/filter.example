@@ -10,26 +10,17 @@
 
 
 filter_database_handler* filter_database_handler_initialize(filter * f);
-void filter_database_handler_free(filter_database_handler * hdl);
-int filter_database_handler_set_uri(filter_database_handler * hdl,const char * prfx,const char * id);
-int filter_database_handler_setup(filter_database_handler * hdl);
-int filter_database_handler_set_output(filter_database_handler * hdl,const void * begin,const void * end);
-int filter_database_handler_set_input(filter_database_handler * hdl,const void * begin,const void * end);
-int filter_database_handler_set_io_length(filter_database_handler * hdl,uint64_t);
-int filter_database_handler_save(filter_database_handler * hdl);
-int filter_database_handler_set_option(filter_database_handler * hdl,int op);
-
-
 struct filter_database_handler{
-    int (*set_uri)(filter_database_handler * hdl,const char * prfx,const char * id)=filter_database_handler_set_uri;
     filter_database_handler* (*alloc)(filter * f)=filter_database_handler_initialize;
-    void (*free)(filter_database_handler * hdl)=filter_database_handler_free;
-    int (*setup)(filter_database_handler * hdl)=filter_database_handler_setup;
-    int (*set_output)(filter_database_handler * hdl,const void * begin,const void * end)=filter_database_handler_set_output;
-    int (*set_input)(filter_database_handler * hdl,const void * begin,const void * end)=filter_database_handler_set_input;
-    int (*set_io_length)(filter_database_handler * hdl,uint64_t)=filter_database_handler_set_io_length;
-    int (*save)(filter_database_handler * hdl)=filter_database_handler_save;
-    int (*set_option)(filter_database_handler * hdl,int op)=filter_database_handler_set_option;
+    int (*set_uri)(void * hdl,const char * prfx,const char * id)=0;
+    void (*free)(void * hdl)=0;
+    int (*setup)(void * hdl)=0;
+    int (*set_output)(void * hdl,const void * begin,const void * end)=0;
+    int (*set_input)(void * hdl,const void * begin,const void * end)=0;
+    int (*set_io_length)(void * hdl,uint64_t)=0;
+    int (*save)(void * hdl)=0;
+    int (*sw_overwrite)(void * hdl,bool)=0;
+    int (*sw_without_rowid)(void * hdl,bool)=0;
     int type=0;
     void * instance=0;
     int last_option=-1;
@@ -58,18 +49,6 @@ struct filter_database_sqlite3_handler{
     bool is_overwrite=false;
     bool is_without_rowid=false;
 };
-
-void* filter_database_sqlite_initialize();
-int filter_database_sqlite_set_uri(void * whdl,const char * prfx,const char * id);
-void filter_database_sqlite_free(void* whdl);
-int filter_database_sqlite_setup(void * whdl);
-int filter_database_sqlite_set_output(void * whdl,const void * begin,const void * end);
-int filter_database_sqlite_set_input(void * whdl,const void * begin,const void * end);
-int filter_database_sqlite_set_io_length(void * whdl,uint64_t len);
-int filter_database_sqlite_save(void * whdl);
-int filter_database_sqlite_overwrite_sw(void * whdl,bool sw); 
-int filter_database_sqlite_without_rowid_sw(void * whdl,bool sw); 
-
 
 
 struct filter_handler_lookup_table{
@@ -192,7 +171,7 @@ void filter_handler_free(filter_handler * fhdl){
     for(auto & e : fhdl->lookup_releaser){
         {
             auto f = e->filter;
-            if(f->db) f->db->free(f->db);
+            if(f->db) f->db->free(f->db->instance);
             delete e->filter;
         }
         
@@ -208,15 +187,16 @@ void filter_handler_free(filter_handler * fhdl){
 
 
 
-void filter_database_handler_free(filter_database_handler * hdl);
-int filter_database_handler_set_uri(filter_database_handler * hdl,const char * prfx,const char * id);
-int filter_database_handler_setup(filter_database_handler * hdl);
-int filter_database_handler_set_output(filter_database_handler * hdl,const void * begin,const void * end);
-int filter_database_handler_set_input(filter_database_handler * hdl,const void * begin,const void * end);
-int filter_database_handler_set_io_length(filter_database_handler * hdl,uint64_t);
-int filter_database_handler_save(filter_database_handler * hdl);
-int filter_database_handler_set_option(filter_database_handler * hdl,int op);
-
+void* filter_database_sqlite_initialize();
+int filter_database_sqlite_set_uri(void * whdl,const char * prfx,const char * id);
+void filter_database_sqlite_free(void* whdl);
+int filter_database_sqlite_setup(void * whdl);
+int filter_database_sqlite_set_output(void * whdl,const void * begin,const void * end);
+int filter_database_sqlite_set_input(void * whdl,const void * begin,const void * end);
+int filter_database_sqlite_set_io_length(void * whdl,uint64_t len);
+int filter_database_sqlite_save(void * whdl);
+int filter_database_sqlite_sw_overwrite(void * whdl,bool sw); 
+int filter_database_sqlite_without_sw_rowid(void * whdl,bool sw); 
 
 
 filter_database_handler* filter_database_handler_initialize(filter * f){
@@ -226,6 +206,16 @@ filter_database_handler* filter_database_handler_initialize(filter * f){
             case FILTER_DATABASE_TYPE_SQLITE3:{
                 res->type = f->database_type(f);
                 res->instance = filter_database_sqlite_initialize();
+                res->set_uri = filter_database_sqlite_set_uri;
+                res->set_output = filter_database_sqlite_set_output;
+                res->set_input = filter_database_sqlite_set_input;
+                res->set_io_length = filter_database_sqlite_set_io_length;
+                res->setup = filter_database_sqlite_setup;
+                res->save = filter_database_sqlite_save;
+                res->sw_overwrite = filter_database_sqlite_sw_overwrite;
+                res->sw_without_rowid = filter_database_sqlite_without_sw_rowid;
+                
+                res->free = filter_database_sqlite_free;
                 return res;
             };
         }
@@ -234,35 +224,46 @@ filter_database_handler* filter_database_handler_initialize(filter * f){
 }
 
 
+int filter_database_handler_set_option(filter_database_handler * hdl,int op){
+    auto op_ow = op & FILTER_DATABASE_OPTION_OVERWRITE;
+    auto op_norowid = op & FILTER_DATABASE_OPTION_WITHOUT_ROWID;
+    if(hdl->sw_without_rowid)hdl->sw_without_rowid(hdl->instance,op_ow);
+    if(hdl->sw_overwrite)hdl->sw_overwrite(hdl->instance,op_norowid);
+    return 0;    
+}
 
 int filter_database_setup(filter * f) { 
+    auto instance = (void * ) 0;
     if(!f->db) f->db = filter_database_handler_initialize(f); 
     else{
-        f->db->free(f->db);
+        f->db->free(f->db->instance);
         f->db=f->db->alloc(f);
     }
+    instance = f->db->instance;
     
-    f->db->set_option(f->db,f->option); // assume want to overwrite paticular range
-    f->db->set_io_length(f->db, f->hdl->io_len);
-    f->db->set_uri(f->db, f->hdl->local_uri.data(), f->id_hr(f));
+    filter_database_handler_set_option(f->db,f->option);
+    f->db->set_io_length(instance, f->hdl->io_len);
+    f->db->set_uri(instance, f->hdl->local_uri.data(), f->id_hr(f));
 
     f->db->last_option = f->option;
-    return f->db->setup(f->db); 
+    return f->db->setup(instance); 
 }
 
 
-void filter_database_handler_free(filter * f){
-    if(f->db) {
-        if (f->database_type) {
-            switch (f->database_type(f)){
-                case FILTER_DATABASE_TYPE_SQLITE3:filter_database_sqlite_free(f->db->instance);
-            };
-            delete f->db;
-        } // database_type
-    }// db
-    f->db=nullptr;
+int filter_database_save(filter * f){
+    if(0== !f->db + !f->save){
+        
+        auto instance = f->db->instance;
+        auto out = (const char *) f->output(f);
+        f->db->set_output(instance, out, out + f->output_bytes(f));
+    
+        auto in = (const char *) f->input(f);
+        f->db->set_input(instance, in, in + f->input_bytes(f));
+        
+        return f->db->save(instance);
+    } 
+    return 0;
 }
-
 
 
 
@@ -279,7 +280,7 @@ uint64_t filter_input_bytes(filter * f) {
 
 
 
-void * filter_lookup(filter_lookup_table * flookup_table,const char * key){
+void * filter_lookup_table_get_value(filter_lookup_table * flookup_table,const char * key){
     // sorting is bad for this process. i neither want  not to change the order of the flookup_table nor to copy it 
     auto arr = reinterpret_cast<char **>(flookup_table);
     for(;;arr+=sizeof(filter_lookup_elem)/sizeof(uintptr_t)){
@@ -288,88 +289,6 @@ void * filter_lookup(filter_lookup_table * flookup_table,const char * key){
     }
     return nullptr;
 }
-
-
-
-int filter_database_save(filter * f){
-    if(0== !f->db + !f->save){
-        
-        auto out = (const char *) f->output(f);
-        f->db->set_output(f->db, out, out + f->output_bytes(f));
-    
-        auto in = (const char *) f->input(f);
-        f->db->set_input(f->db, in, in + f->input_bytes(f));
-        
-        return f->db->save(f->db);
-    } 
-    return 0;
-}
-
-
-
-int filter_database_handler_set_option(filter_database_handler * hdl,int op){
-    auto op_ow = op & FILTER_DATABASE_OPTION_OVERWRITE;
-    auto op_norowid = op & FILTER_DATABASE_OPTION_WITHOUT_ROWID;
-    switch(hdl->type){
-        case FILTER_DATABASE_TYPE_SQLITE3: {
-            int res= 
-                  filter_database_sqlite_overwrite_sw(hdl->instance,op_ow)
-                | filter_database_sqlite_without_rowid_sw(hdl->instance,op_norowid);
-        }
-    }
-    return 1;    
-}
-
-int filter_database_handler_set_uri(filter_database_handler * hdl,const char * prfx,const char * id){
-    switch(hdl->type){
-        case FILTER_DATABASE_TYPE_SQLITE3: return  filter_database_sqlite_set_uri(hdl->instance,prfx,id);
-    }
-    return 1;
-}
-void filter_database_handler_free(filter_database_handler * hdl){
-    switch(hdl->type){
-        case FILTER_DATABASE_TYPE_SQLITE3: filter_database_sqlite_free(hdl->instance); break;
-    }
-}
-int filter_database_handler_setup(filter_database_handler * hdl){
-    switch(hdl->type){
-        case FILTER_DATABASE_TYPE_SQLITE3: return filter_database_sqlite_setup(hdl->instance); break;
-    }
-    return 1;
-}
-int filter_database_handler_set_output(filter_database_handler * hdl,const void * begin,const void * end){
-    switch(hdl->type){
-        case FILTER_DATABASE_TYPE_SQLITE3: return filter_database_sqlite_set_output(hdl->instance,begin,end); break;
-    }
-    return 1;
-}
-int filter_database_handler_set_input(filter_database_handler * hdl,const void * begin,const void * end){
-    switch(hdl->type){
-        case FILTER_DATABASE_TYPE_SQLITE3: return filter_database_sqlite_set_input(hdl->instance,begin,end); break;
-    }
-    return 1;
-}
-int filter_database_handler_set_io_length(filter_database_handler * hdl,uint64_t len){
-    switch(hdl->type){
-        case FILTER_DATABASE_TYPE_SQLITE3: return filter_database_sqlite_set_io_length(hdl->instance,len); break;
-    }
-    return 1;
-}
-int filter_database_handler_save(filter_database_handler * hdl){
-    switch(hdl->type){
-        case FILTER_DATABASE_TYPE_SQLITE3: return  filter_database_sqlite_save(hdl->instance); break;
-    }
-    return 1;
-}
-
-
-
-
-
-
-
-
-
 
 
 
@@ -387,9 +306,6 @@ constexpr static const char * kCreateSt             = "create table if not exist
 constexpr static const char * kCreateStWithoutRowid = "create table if not exists m([k] blob primary key,[v] blob) without rowid ";
 static const char * kInsertSt = "insert or ignore into m(k,v) values(?,?)";
 static const char * kInsertStOw = "insert or replace into m(k,v) values(?,?)";
-
-
-
 
 
 filter_database_sqlite3_handler* get_instance(void * whdl){
@@ -474,13 +390,13 @@ int filter_database_sqlite_set_io_length(void * whdl,uint64_t len){
     return 0;
 }
 
-int filter_database_sqlite_overwrite_sw(void * whdl,bool sw){
+int filter_database_sqlite_sw_overwrite(void * whdl,bool sw){
     auto m=get_instance(whdl);
     m->is_overwrite=sw;
     return 0;
 }
 
-int filter_database_sqlite_without_rowid_sw(void * whdl,bool sw){
+int filter_database_sqlite_without_sw_rowid(void * whdl,bool sw){
     auto m=get_instance(whdl);
     m->is_without_rowid=sw;
     return 0;

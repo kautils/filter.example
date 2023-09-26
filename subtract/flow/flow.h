@@ -8,11 +8,11 @@
 #define FILTER_DATABASE_TYPE_SQLITE3 1
 
 struct filter_lookup_table{};
-void * filter_lookup_table_get_value(filter_lookup_table * flookup_table,const char * key);
 struct filter_lookup_elem{
     const char * key = 0; 
     void * value = nullptr;
 }__attribute__((aligned(8)));
+void * filter_lookup_table_get_value(filter_lookup_table * flookup_table,const char * key);
 
 
 struct filter_handler;

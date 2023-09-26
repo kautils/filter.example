@@ -20,6 +20,11 @@ struct filter_handler{
 };
 
 
+int filter_handler_push(filter* f);
+int filter_handler_link(filter* f);
+
+
+
 
 
 struct filter_database_handler;
@@ -45,6 +50,7 @@ int filter_database_sqlite_save(void * whdl);
 //the reason why i don't use bitwise is i want to hide definitions of filter_database_handler including macro  
 int filter_database_sqlite_overwrite_sw(void * whdl,bool sw); 
 int filter_database_sqlite_without_rowid_sw(void * whdl,bool sw); 
+
 
 #define FILTER_DATABASE_OPTION_OVERWRITE 1 // ignore / overwrite
 #define FILTER_DATABASE_OPTION_WITHOUT_ROWID 2 // not use rowid, if database dose not support rowid, then shoudl be ignored (e.g : in case of using filesystem directlly).
@@ -121,43 +127,39 @@ int filter_database_handler_save(filter_database_handler * hdl){
 }
 
 
-
+int filter_database_setup(filter * f);
+int filter_database_save(filter * f);
 void* filter_input(filter * f);
 uint64_t filter_input_bytes(filter * f);
+
+
+struct filter_input_static{
+    void * data=0;
+    uint64_t bytes=0;
+};
+
+
 struct filter{
     int (*main)(filter * m)=0;
     void * (*output)(filter *)=0;
     uint64_t(*output_bytes)(filter *)=0;
     void * (*input)(filter *)=filter_input;
     uint64_t(*input_bytes)(filter *)=filter_input_bytes;
+    filter_input_static input_static; // short cut to filter
     const char *(*id)(filter *)=0;
     const char *(*id_hr)(filter *)=0;
     int (*database_type)(filter *)=0;
+    int (*setup_database)(filter *)=filter_database_setup;
+    int (*save)(filter *)=filter_database_save;
     void* m=0;
     filter_database_handler * db=0;
     filter_handler * hdl=0;
+    int pos=-1;
+    
+    
 } __attribute__((aligned(8)));
-///@note input is common
-void* filter_input(filter * f) { return f->hdl->previous->output(f->hdl->previous); }
-uint64_t filter_input_bytes(filter * f) { 
-    if(f->hdl->previous)return f->hdl->previous->output_bytes(f->hdl->previous); 
-    return 0;
-}
 
-
-
-constexpr static const char * kCreateSt             = "create table if not exists m([rowid] interger primary key,[k] blob,[v] blob,unique([k])) ";
-constexpr static const char * kCreateStWithoutRowid = "create table if not exists m([k] blob primary key,[v] blob) without rowid ";
-static const char * kInsertSt = "insert or ignore into m(k,v) values(?,?)";
-static const char * kInsertStOw = "insert or replace into m(k,v) values(?,?)";
-
-
-struct io_data{
-    const void * begin;
-    const void * end;
-    uint64_t io_length;
-};
-
+struct io_data{ const void * begin;const void * end; };
 struct filter_database_sqlite3_handler{
     kautil::database::Sqlite3Stmt * create;
     kautil::database::Sqlite3Stmt * insert;
@@ -172,6 +174,53 @@ struct filter_database_sqlite3_handler{
     bool is_overwrite=false;
     bool is_without_rowid=false;
 };
+
+
+
+int filter_handler_link(filter_handler * fhdl){
+    for(auto & f : fhdl->filters) {
+        if(f->pos>0){
+            auto f_i = f->hdl->filters[f->pos-1];
+            f->input_static.data = f_i->output(f_i);
+            f->input_static.bytes = f_i->output_bytes(f_i);
+        }else{
+            f->input_static.data = nullptr;
+            f->input_static.bytes = 0;
+        }
+    }
+    return 0;
+}
+
+int filter_handler_push(filter_handler * fhdl,filter* f){
+    if(0==(f->pos=fhdl->filters.size())){
+        fhdl->previous= nullptr;
+        fhdl->current= f;
+    }
+    fhdl->filters.push_back(f);
+    return 0;
+}
+
+///@note input is common
+void* filter_input(filter * f) { return f->input_static.data; }
+uint64_t filter_input_bytes(filter * f) { return f->input_static.bytes; }
+
+int filter_database_save(filter * f){
+    if(0== !f->db + !f->save) return f->db->save(f->db);
+    return 0;
+}
+
+
+
+
+
+
+constexpr static const char * kCreateSt             = "create table if not exists m([rowid] interger primary key,[k] blob,[v] blob,unique([k])) ";
+constexpr static const char * kCreateStWithoutRowid = "create table if not exists m([k] blob primary key,[v] blob) without rowid ";
+static const char * kInsertSt = "insert or ignore into m(k,v) values(?,?)";
+static const char * kInsertStOw = "insert or replace into m(k,v) values(?,?)";
+
+
+
 
 
 filter_database_sqlite3_handler* get_instance(void * whdl){
@@ -384,6 +433,9 @@ void filter_lookup_table_free(filter_lookup_table * f){
 
 
 
+
+
+
 struct filter_first{
     void * o=0;
     uint64_t o_bytes=0;
@@ -426,6 +478,24 @@ void filter_database_handler_free(filter * f){
     }// db
 }
 
+
+int filter_database_setup(filter * f) { 
+    if(f->db){
+        f->db->set_option(f->db, FILTER_DATABASE_OPTION_OVERWRITE | FILTER_DATABASE_OPTION_WITHOUT_ROWID);
+        f->db->set_io_length(f->db,f->hdl->io_len);
+        f->db->set_uri(f->db,f->hdl->local_uri.data(),f->id_hr(f));
+
+        auto out = (const char *) f->output(f);
+        f->db->set_output(f->db,out,out+f->output_bytes(f));
+
+        auto in = (const char *) f->input(f);
+        f->db->set_input(f->db,in,in+f->input_bytes(f));
+        return f->db->setup(f->db);
+    }
+    return 0;
+}
+
+
 int main(){
     
     auto input_len = 100; // all the input/output inside a chain is the same,if the result structure are counted as one data 
@@ -449,57 +519,39 @@ int main(){
     using filter_id_t = const char* (*)(filter *);
     using database_type_t = int (*)(filter *);
 
-    auto f = filter{};
     auto fhdl = filter_handler{};
     fhdl.io_len = input_len;
     fhdl.local_uri = "./";
     
     auto flookup = filter_lookup_table_initialize();
-    f.hdl=&fhdl;
-    f.main= (decltype(f.main))filter_lookup(flookup,"fmain");
-    f.output= (output_t)filter_lookup(flookup,"output");
-    f.output_bytes= (output_bytes_t)filter_lookup(flookup,"output_bytes");
-    f.id= (filter_id_t)filter_lookup(flookup,"id");
-    f.id_hr= (filter_id_t)filter_lookup(flookup,"id_hr");
-    f.database_type =(database_type_t) filter_lookup(flookup,"database_type");
-    f.m= filter_lookup(flookup,"member");
-    f.db = filter_database_handler_initialize(&f);
     
-    
-    fhdl.filters.push_back(&input);
-    fhdl.filters.push_back(&f);
+    auto f = filter{};{
+        f.hdl=&fhdl;
+        f.main= (decltype(f.main))filter_lookup(flookup,"fmain");
+        f.output= (output_t)filter_lookup(flookup,"output");
+        f.output_bytes= (output_bytes_t)filter_lookup(flookup,"output_bytes");
+        f.id= (filter_id_t)filter_lookup(flookup,"id");
+        f.id_hr= (filter_id_t)filter_lookup(flookup,"id_hr");
+        f.database_type =(database_type_t) filter_lookup(flookup,"database_type");
+        f.m= filter_lookup(flookup,"member");
+        f.db = filter_database_handler_initialize(&f);
+    }
+
     {
-        fhdl.previous= nullptr;
-        fhdl.current= &input;
+        filter_handler_push(&fhdl,&input);
+        filter_handler_push(&fhdl,&f);
+        filter_handler_link(&fhdl);
     }
     
+    
+    f.setup_database(&f);
     
     for(auto i = 1; i < fhdl.filters.size(); ++i){
         auto f = fhdl.filters[i];
         f->hdl->previous = f->hdl->current;
         f->hdl->current = f;
-        
         f->main(f);
-        if(f->db){
-            
-            f->db->set_option(f->db, FILTER_DATABASE_OPTION_OVERWRITE | FILTER_DATABASE_OPTION_WITHOUT_ROWID);
-            f->db->set_io_length(f->db,input_len);
-            f->db->set_uri(f->db,f->hdl->local_uri.data(),f->id_hr(f));
-            f->db->set_io_length(f->db,fhdl.io_len);
-            auto out = (const char *) f->output(f);
-            f->db->set_output(f->db,out,out+f->output_bytes(f));
-
-            auto in = (const char *) f->input(f);
-            f->db->set_input(f->db,in,in+f->input_bytes(f));
-
-            if(!f->db->setup(f->db)){
-                f->db->save(f->db);
-            }else{
-                printf("fail to setup");
-            }
-//            f->db->setup(f->db);
-            
-        }
+        f->save(f);
     }
     
     if(f.output_bytes){

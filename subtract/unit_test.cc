@@ -68,54 +68,33 @@ void lookup_tb_free(filter_lookup_table * f){
     delete f; 
 }
 
-struct filter_first{
-    void * o=0;
-    uint64_t o_bytes=0;
-    uint64_t o_length=0;
-}__attribute__((aligned(8)));
-
-void* filter_first_output(filter * f){
-    return reinterpret_cast<filter_first*>(f->m)->o;
-}
-uint64_t filter_first_output_bytes(filter * f){
-    return reinterpret_cast<filter_first*>(f->m)->o_bytes;
-}
-
-
 int main(){
     
     remove("R:\\flow\\build\\android\\filter.arithmetic.subtract\\KautilFilterArithmeticSubtract.0.0.1\\4724af5.sqlite");
     
     auto input_len = 100; // all the input/output inside a chain is the same,if the result structure are counted as one data 
-    auto i = new filter_first{};
-    filter input;{
-        {
-            auto arr = new double[input_len];
-            for(auto i = 0; i < input_len; ++i)arr[i] = i;
-            i->o = arr;
-            i->o_bytes = sizeof(double)*input_len; 
-            i->o_length = input_len; 
-        }
-        input.m = i;
-        input.output=filter_first_output;
-        input.output_bytes=filter_first_output_bytes;
-    }
+    auto arr = new double[input_len];
+    for(auto i = 0; i < input_len; ++i)arr[i] = i;
     
     auto fhdl = filter_handler_initialize();
     filter_handler_set_io_length(fhdl,input_len);
     filter_handler_set_local_uri(fhdl,"./");
 
     {
-        filter_handler_push(fhdl,&input);
+//        filter_handler_push(fhdl,&input);
+        filter_handler_input(fhdl,arr,sizeof(double));
         filter_handler_push_with_lookup_table(fhdl,lookup_tb_initialize,lookup_tb_free);
         filter_handler_execute(fhdl);
     }
     
+    printf("AAAAAAAAAAAA");
     filter_handler_free(fhdl);
     
-    delete [] (double*)i->o;
-    delete i;
+    delete [] (double*) arr;
+//    delete i;
     
+
+
     return 0;
 }
 

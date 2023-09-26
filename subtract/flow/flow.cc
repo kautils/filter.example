@@ -77,8 +77,10 @@ struct filter_handler_lookup_table{
    void (*free_lookup_table)(filter_lookup_table * f)=0;
    filter_lookup_table * lookup_table=0;
    filter * filter =0;
+    
 };
 
+struct filter_first_member;
 struct filter_handler{ 
     filter * previous=0;
     filter * current=0;
@@ -86,36 +88,33 @@ struct filter_handler{
     std::vector<filter_handler_lookup_table*> lookup_releaser;
     std::string local_uri;
     uint64_t io_len=0;
+    filter_first_member * first_member=0;
 };
 
 struct filter_database_handler;
 filter_database_handler* filter_database_handler_initialize(filter * f);
 filter_handler* filter_handler_initialize(){ return new filter_handler{}; }
-void filter_handler_free(filter_handler * fhdl){ 
-    for(auto & e : fhdl->lookup_releaser){
-        {
-            auto f = e->filter;
-            if(f->db) f->db->free(f->db);
-            delete e->filter;
-        }
-        e->free_lookup_table(e->lookup_table);
-    }
-    delete fhdl; 
-}
 
 
-filter * filter_handler_lookup(filter_handler * fhdl
-                               ,filter_lookup_table * flookup 
-                               ){
+void* filter_input(filter * f);
+uint64_t filter_input_bytes(filter * f);
+int filter_database_setup(filter * f);
+int filter_database_save(filter * f);
+filter * filter_handler_lookup(filter_handler * fhdl,filter_lookup_table * flookup){
     auto f = new filter{};{
         f->hdl=fhdl;
-        f->main= (decltype(f->main))filter_lookup(flookup,"fmain");
-        f->output= (output_t)filter_lookup(flookup,"output");
-        f->output_bytes= (output_bytes_t)filter_lookup(flookup,"output_bytes");
-        f->id= (filter_id_t)filter_lookup(flookup,"id");
-        f->id_hr= (filter_id_t)filter_lookup(flookup,"id_hr");
-        f->database_type =(database_type_t) filter_lookup(flookup,"database_type");
-        f->m= filter_lookup(flookup,"member");
+        f->main= (decltype(f->main))filter_lookup_table_get_value(flookup,"fmain");
+        f->output= (output_t)filter_lookup_table_get_value(flookup,"output");
+        f->output_bytes= (output_bytes_t)filter_lookup_table_get_value(flookup,"output_bytes");
+        f->input = filter_input;
+        f->input_bytes = filter_input_bytes;
+        f->id= (filter_id_t)filter_lookup_table_get_value(flookup,"id");
+        f->id_hr= (filter_id_t)filter_lookup_table_get_value(flookup,"id_hr");
+        f->database_type =(database_type_t) filter_lookup_table_get_value(flookup,"database_type");
+        f->setup_database=filter_database_setup;
+        f->save=filter_database_save;
+        f->m= filter_lookup_table_get_value(flookup,"member");
+        
         f->option=FILTER_DATABASE_OPTION_OVERWRITE | FILTER_DATABASE_OPTION_WITHOUT_ROWID;
         f->setup_database(f);
     }
@@ -157,10 +156,59 @@ int filter_handler_execute(filter_handler * fhdl){
 
 void filter_handler_set_io_length(filter_handler * hdl,uint64_t len){ hdl->io_len=len; }
 void filter_handler_set_local_uri(filter_handler * hdl,const char * uri){ hdl->local_uri = uri; }
+int filter_handler_push(filter_handler * fhdl,filter* f){
+    if(0==(fhdl->filters.empty())){
+        fhdl->previous= nullptr;
+        fhdl->current= f;
+    }
+    fhdl->filters.push_back(f);
+    return 0;
+}
+
+struct filter_first_member{ void * o=0;uint64_t o_bytes=0; }__attribute__((aligned(8)));
+void* filter_first_member_output(filter * f){ return reinterpret_cast<filter_first_member*>(f->m)->o; }
+uint64_t filter_first_member_output_bytes(filter * f){ return reinterpret_cast<filter_first_member*>(f->m)->o_bytes; }
+int filter_handler_input(filter_handler * fhdl,void * data,int32_t block_size){
+    fhdl->lookup_releaser.emplace_back(new filter_handler_lookup_table{
+        .filter=new filter{}
+    });
+    
+    auto input = fhdl->lookup_releaser.back()->filter;
+    {
+        fhdl->first_member = new filter_first_member{};{
+            fhdl->first_member->o = data;
+            fhdl->first_member->o_bytes = block_size*fhdl->io_len; 
+        }
+        input->m = fhdl->first_member;
+        input->output=filter_first_member_output;
+        input->output_bytes=filter_first_member_output_bytes;
+    }
+    filter_handler_push(fhdl,input);
+    return 0;
+}
+
+
+void filter_handler_free(filter_handler * fhdl){ 
+    for(auto & e : fhdl->lookup_releaser){
+        {
+            auto f = e->filter;
+            if(f->db) f->db->free(f->db);
+            delete e->filter;
+        }
+        
+        if(e->free_lookup_table){
+            e->free_lookup_table(e->lookup_table);
+        }
+        delete e;
+    }
+    delete fhdl->first_member;
+    delete fhdl; 
+}
+
+
 
 
 void filter_database_handler_free(filter_database_handler * hdl);
-//int filter_database_handler_reset(filter_database_handler * hdl);
 int filter_database_handler_set_uri(filter_database_handler * hdl,const char * prfx,const char * id);
 int filter_database_handler_setup(filter_database_handler * hdl);
 int filter_database_handler_set_output(filter_database_handler * hdl,const void * begin,const void * end);
@@ -217,14 +265,6 @@ void filter_database_handler_free(filter * f){
 
 
 
-int filter_handler_push(filter_handler * fhdl,filter* f){
-    if(0==(fhdl->filters.empty())){
-        fhdl->previous= nullptr;
-        fhdl->current= f;
-    }
-    fhdl->filters.push_back(f);
-    return 0;
-}
 
 void* filter_input(filter * f) { 
     if(f->hdl->previous){
@@ -236,6 +276,21 @@ void* filter_input(filter * f) {
 uint64_t filter_input_bytes(filter * f) { 
     return f->hdl->previous->output_bytes(f->hdl->previous);
 }
+
+
+
+void * filter_lookup(filter_lookup_table * flookup_table,const char * key){
+    // sorting is bad for this process. i neither want  not to change the order of the flookup_table nor to copy it 
+    auto arr = reinterpret_cast<char **>(flookup_table);
+    for(;;arr+=sizeof(filter_lookup_elem)/sizeof(uintptr_t)){
+        if(nullptr==arr[0]) break;
+        if(!strcmp(key,arr[0]))return reinterpret_cast<void*>(arr[1]);
+    }
+    return nullptr;
+}
+
+
+
 int filter_database_save(filter * f){
     if(0== !f->db + !f->save){
         
@@ -309,15 +364,23 @@ int filter_database_handler_save(filter_database_handler * hdl){
 
 
 
-void * filter_lookup(filter_lookup_table * flookup_table,const char * key){
-    // sorting is bad for this process. i neither want  not to change the order of the flookup_table nor to copy it 
-    auto arr = reinterpret_cast<char **>(flookup_table);
-    for(;;arr+=sizeof(filter_lookup_elem)/sizeof(uintptr_t)){
-        if(nullptr==arr[0]) break;
-        if(!strcmp(key,arr[0]))return reinterpret_cast<void*>(arr[1]);
-    }
-    return nullptr;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+// ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+
+
 
 
 constexpr static const char * kCreateSt             = "create table if not exists m([rowid] interger primary key,[k] blob,[v] blob,unique([k])) ";

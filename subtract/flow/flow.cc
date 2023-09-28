@@ -34,22 +34,6 @@ using filter_id_t = const char* (*)(filter *);
 using database_type_t = int (*)(filter *);
 
 
-struct io_data{ const void * begin;const void * end; };
-struct filter_database_sqlite3_handler{
-    kautil::database::Sqlite3Stmt * create;
-    kautil::database::Sqlite3Stmt * insert;
-    kautil::database::Sqlite3 * sql=0;
-    kautil::database::sqlite3::Options * op=0;
-    std::string uri_prfx;
-    std::string id;
-    
-    io_data i;
-    io_data o;
-    uint64_t io_len=0;
-    bool is_overwrite=false;
-    bool is_without_rowid=false;
-};
-
 
 struct filter_handler_lookup_table{
    filter_lookup_table * (*initialize_lookup_table)()=0;
@@ -293,10 +277,25 @@ void * filter_lookup_table_get_value(filter_lookup_table * flookup_table,const c
 
 
 
-
-
 // ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+
+
+struct io_data{ const void * begin;const void * end; };
+struct filter_database_sqlite3_handler{
+    kautil::database::Sqlite3Stmt * create;
+    kautil::database::Sqlite3Stmt * insert;
+    kautil::database::Sqlite3 * sql=0;
+    kautil::database::sqlite3::Options * op=0;
+    std::string uri_prfx;
+    std::string id;
+
+    io_data i;
+    io_data o;
+    uint64_t io_len=0;
+    bool is_overwrite=false;
+    bool is_without_rowid=false;
+};
 
 
 
@@ -445,18 +444,28 @@ struct filter_lookup_table_database_sqlite{
     filter_lookup_elem save{.key="save",.value=(void*)filter_database_sqlite_save};
     filter_lookup_elem member{.key="member",.value=(void*)filter_database_sqlite_initialize()};
     filter_lookup_elem sentinel{.key=nullptr,.value=nullptr};
-} __attribute__((aligned(8)));
+} __attribute__((aligned(sizeof(uintptr_t))));
 
 
+extern "C" uint64_t __lookup_tb_pointer_size(){ return sizeof(uintptr_t);}
 extern "C" filter_lookup_table * __lookup_tb_initialize(){ 
     auto res= new filter_lookup_table_database_sqlite{}; 
     return reinterpret_cast<filter_lookup_table*>(res);
 }
-
 extern "C" void __lookup_tb_free(filter_lookup_table * f){
     auto entity = reinterpret_cast<filter_lookup_table_database_sqlite*>(f);
     delete reinterpret_cast<filter_database_sqlite3_handler*>(entity->member.value);
     delete entity; 
+}
+
+
+
+
+int tmain_kautil_flow_static(){
+    
+    printf("AAAAAAAAAAA\n");
+    
+    return 0;
 }
 
 

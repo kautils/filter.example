@@ -11,10 +11,8 @@ CMakeFetchKautilModule(sqlite
         TAG v2.0.1.0
         CMAKE_CONFIGURE_MACRO -DCMAKE_CXX_FLAGS="-O2" -DCMAKE_CXX_STANDARD=23
         CMAKE_BUILD_OPTION -j ${${m}_thread_cnt}
-#        FORCE_UPDATE
         )
 find_package(KautilSqlite3.2.0.1.0.shared REQUIRED)
-
 
 
 
@@ -40,8 +38,10 @@ CMakeLibraryTemplate(${module_name} EXPORT_LIB_TYPE static ${${module_name}_comm
 CMakeLibraryTemplate(${module_name} EXPORT_LIB_TYPE shared ${${module_name}_common_pref} )
 
 
+
 set(__t ${${module_name}_static_tmain})
 add_executable(${__t})
 target_sources(${__t} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/unit_test.cc)
 target_link_libraries(${__t} PRIVATE ${${module_name}_static})
 target_compile_definitions(${__t} PRIVATE ${${module_name}_static_tmain_ppcs})
+

@@ -3,7 +3,6 @@
 
 #include <vector>
 #include <string>
-#include "kautil/cache/virtual_file/virtual_file.h"
 #include "flow.h"
 
 
@@ -25,7 +24,7 @@ struct filter_lookup_table_subtract{
     filter_lookup_elem sentinel{.key=nullptr,.value=nullptr};
 } __attribute__((aligned(8)));
 
-/*extern "C" */int fmain(filter * f) {
+int fmain(filter * f) {
     auto arr = reinterpret_cast<double*>(f->input(f));
     auto len = f->input_bytes(f)/sizeof(double);
     
@@ -41,11 +40,11 @@ struct filter_lookup_table_subtract{
 }
 
 
-/*extern "C" */uint64_t output_bytes(filter * f) { return m(f)->res.size()*sizeof(double); }
-/*extern "C" */void* output(filter * f) { return m(f)->res.data(); }
-/*extern "C" */const char* id(filter * f) { return FILTER_ID; }
-/*extern "C" */const char* id_hr(filter * f) { return FILTER_ID_HR; }
-/*extern "C" */int database_type(filter * f){ return FILTER_DATABASE_TYPE_SQLITE3; }
+uint64_t output_bytes(filter * f) { return m(f)->res.size()*sizeof(double); }
+void* output(filter * f) { return m(f)->res.data(); }
+const char* id(filter * f) { return FILTER_ID; }
+const char* id_hr(filter * f) { return FILTER_ID_HR; }
+int database_type(filter * f){ return FILTER_DATABASE_TYPE_SQLITE3; }
 
 
 extern "C" filter_lookup_table * lookup_tb_initialize(){ 

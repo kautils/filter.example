@@ -1,3 +1,5 @@
+
+
 set(${PROJECT_NAME}_m_evacu ${m})
 set(m CMakePullLocalRepositoryAsSymLink)
 list(APPEND ${m}_unsetter )
@@ -12,27 +14,19 @@ git_clone(https://raw.githubusercontent.com/kautils/CMakeGitCurrentCommitHash/v0
 git_clone(https://raw.githubusercontent.com/kautils/CMakeFetchKautilModule/v0.0.1/CMakeFetchKautilModule.cmake)
 
 
-
 include(ProcessorCount)
 ProcessorCount(${m}_thread_cnt)
-CMakeFetchKautilModule(virtual_file
-        GIT https://github.com/kautils/virtual_file.git
-        REMOTE origin
-        TAG v0.0.1
-        CMAKE_CONFIGURE_MACRO -DCMAKE_CXX_FLAGS="-O2" -DCMAKE_CXX_STANDARD=23
-        CMAKE_BUILD_OPTION -j ${${m}_thread_cnt}
-        )
-find_package(KautilCacheVirtualFile.0.0.1.shared REQUIRED)
 
-CMakeFetchKautilModule(sqlite
-        GIT https://github.com/kautils/sqlite3.git
-        REMOTE origin
-        TAG v2.0.1.0
-        CMAKE_CONFIGURE_MACRO -DCMAKE_CXX_FLAGS="-O2" -DCMAKE_CXX_STANDARD=23
-        CMAKE_BUILD_OPTION -j ${${m}_thread_cnt}
-#        FORCE_UPDATE
-        )
-find_package(KautilSqlite3.2.0.1.0.shared REQUIRED)
+
+
+### start temporal
+CMakeSyncLocalRepositoryWithSymLink(
+    LOCAL "D:/git.local/local"
+    REPOS 
+    DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}
+)
+set(__flow kautil_flow_0.0.1_static)
+### end temporal
 
 
 
@@ -44,6 +38,7 @@ set(${module_name}_common_pref
     MODULE_NAME ${module_name}
     INCLUDES $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}> $<INSTALL_INTERFACE:include> 
     SOURCES ${srcs}
+    LINK_LIBS ${__flow}
     EXPORT_NAME_PREFIX ${PROJECT_NAME}
     EXPORT_VERSION ${PROJECT_VERSION}
     EXPORT_VERSION_COMPATIBILITY AnyNewerVersion
@@ -52,17 +47,12 @@ set(${module_name}_common_pref
     DESTINATION_LIB_DIR lib
 )
 
+
 list(APPEND ${m}_unsetter ${m}_thread_cnt)
-
-
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/flow)
-
 CMakeGitCurrentCommitHash(${m}_filter_id)
 string(SUBSTRING "${${m}_filter_id}" 0 7 ${m}_filter_short_id)
 set(${m}_filter_hr_id ${PROJECT_NAME}/${${m}_filter_short_id}) # hr_id : human readable id
 CMakeLibraryTemplate(${module_name} EXPORT_LIB_TYPE shared ${${module_name}_common_pref} )
-target_link_libraries(${${module_name}_shared} PRIVATE kautil::sqlite3::2.0.1.0::shared)
-
 target_compile_definitions(${${module_name}_shared} PUBLIC
     -DFILTER_ID_SHORT="${${m}_filter_short_id}"
     -DFILTER_ID_HR="${${m}_filter_hr_id}"
@@ -71,17 +61,14 @@ target_compile_definitions(${${module_name}_shared} PUBLIC
 
 
 
+
+
 set(__t ${${module_name}_shared_tmain})
 add_executable(${__t})
 target_sources(${__t} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/unit_test.cc)
-target_link_libraries(${__t} PRIVATE ${${module_name}_shared} 
-        kautil::sqlite3::2.0.1.0::shared 
-        kautil_flow_0.0.1_static
-#        kautil::cache::virtual_file::0.0.1::shared
-        )
-
-
+target_link_libraries(${__t} PRIVATE ${${module_name}_shared} ${__flow})
 target_compile_definitions(${__t} PRIVATE ${${module_name}_shared_tmain_ppcs})
+
 
 foreach(__v ${${m}_unsetter})
     unset(${__v})
@@ -89,4 +76,3 @@ endforeach()
 unset(${m}_unsetter)
 set(m ${${PROJECT_NAME}_m_evacu})
 
-return()

@@ -8,13 +8,14 @@ constexpr int kLengthAdj = 2;
 
 struct subtract{
     std::vector<double> res;
+    std::vector<uint64_t> res_index;
     uint64_t len=0;
     inline static std::array<uint64_t,kLengthAdj> kV;
     std::array<uint64_t,kLengthAdj>::iterator v_cur;
     std::string state_id_buffer;
 };
 
-bool kInit_once = [](){
+bool kInitOnce = [](){
     std::iota(subtract::kV.begin(),subtract::kV.end(),0);
     return true;
 }.operator()();
@@ -36,6 +37,7 @@ bool is_uniformed(filter * f);
 uint64_t output_bytes(filter * f);
 uint64_t output_size(filter * f);
 void* output(filter * f);
+uint64_t* index(filter * f);
 const char* id(filter * f);
 const char* id_hr(filter * f);
 bool database_close_always(filter * f);
@@ -46,6 +48,7 @@ struct filter_lookup_table_subtract{
     filter_lookup_elem output{.key="output",.value=(void*)::output};
     filter_lookup_elem output_size{.key="output_size",.value=(void*)::output_size};
     filter_lookup_elem output_bytes{.key="output_bytes",.value=(void*)::output_bytes};
+    filter_lookup_elem index{.key="index",.value=(void*)::index};
     filter_lookup_elem id{.key="id",.value=(void*)::id};
     filter_lookup_elem id_hr{.key="id_hr",.value=(void*)::id_hr};
     filter_lookup_elem member{.key="member",.value=(void*)new subtract};
@@ -62,11 +65,14 @@ int fmain(filter * f) {
     auto arr = reinterpret_cast<double*>(f->input(f));
     auto len = f->input_bytes(f)/sizeof(double);
     
-    if(m(f)->res.size() < len) m(f)->res.resize(len);
     m(f)->len=len;
-    for(auto i = 0; i < len ; i++){
-        printf("%llf\n",arr[i]);fflush(stdout);
-        m(f)->res[i] = arr[i]+123456789;
+    m(f)->res.resize(0);
+    m(f)->res_index.resize(0);
+    for(auto i = 0; i < len ; ++i){
+//        if(0==i%2){
+        m(f)->res.push_back(arr[i]+123456789);
+        m(f)->res_index.push_back(static_cast<uint64_t>(i));
+//        }
     }
     return 0;
 }
@@ -81,7 +87,7 @@ bool state_next(filter * f){
     return m(f)->kV.end() != ++m(f)->v_cur; 
 };
 
-
+uint64_t* index(filter * f){ return m(f)->res_index.data(); }
 uint64_t output_size(filter * f) { return m(f)->res.size(); }
 uint64_t output_bytes(filter * f) { return m(f)->res.size()*sizeof(double); }
 void* output(filter * f) { return m(f)->res.data(); }

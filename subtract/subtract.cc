@@ -67,7 +67,7 @@ struct filter_lookup_table_subtract{
     filter_lookup_elem sentinel{.key=nullptr,.value=nullptr};
 } __attribute__((aligned(sizeof(uintptr_t))));
     
-
+#define UNIFORMED
 #ifdef UNIFORMED
 
 int fmain(filter * f) {
@@ -125,7 +125,8 @@ void* output(filter * f) { return m(f)->res_nu.data(); }
 
 
 
-bool database_close_always(filter * f){ return true; }
+//bool database_close_always(filter * f){ return true; }
+bool database_close_always(filter * f){ return false; }
 void state_reset(filter * f){ m(f)->v_cur=m(f)->kV.begin(); }
 const char * state_id(filter * f){ return (m(f)->state_id_buffer=std::to_string(*m(f)->v_cur)).data(); }
 bool state_next(filter * f){ return m(f)->kV.end() != ++m(f)->v_cur; };

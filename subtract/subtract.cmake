@@ -20,11 +20,6 @@ ProcessorCount(${m}_thread_cnt)
 
 
 ### start temporal
-CMakeSyncLocalRepositoryWithSymLink(
-    LOCAL "D:/git.local/local"
-    REPOS 
-    DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}
-)
 set(__flow kautil_flow_0.0.1_static)
 ### end temporal
 
@@ -38,7 +33,7 @@ set(${module_name}_common_pref
     MODULE_NAME ${module_name}
     INCLUDES $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}> $<INSTALL_INTERFACE:include> 
     SOURCES ${srcs}
-    LINK_LIBS ${__flow}
+    LINK_LIBS ${__flow} 
     EXPORT_NAME_PREFIX ${PROJECT_NAME}
     EXPORT_VERSION ${PROJECT_VERSION}
     EXPORT_VERSION_COMPATIBILITY AnyNewerVersion
@@ -47,6 +42,8 @@ set(${module_name}_common_pref
     DESTINATION_LIB_DIR lib
 )
 
+
+set(CMAKE_VERBOSE_MAKEFILE TRUE)
 
 list(APPEND ${m}_unsetter ${m}_thread_cnt)
 CMakeGitCurrentCommitHash(${m}_filter_id)

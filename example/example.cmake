@@ -26,11 +26,11 @@ set(__flow kautil_flow_0.0.1_static)
 
 
 
-set(module_name subtract)
+set(module_name example)
 unset(srcs)
 file(GLOB srcs ${CMAKE_CURRENT_LIST_DIR}/*.cc)
 set(${module_name}_common_pref
-    MODULE_PREFIX kautil filter althmetic
+    MODULE_PREFIX kautil filter
     MODULE_NAME ${module_name}
     INCLUDES $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}> $<INSTALL_INTERFACE:include> 
     SOURCES ${srcs}

@@ -1,16 +1,19 @@
 #include <vector>
-#include "flow.h"
+//#include "flow.h"
 #include <string>
 #include <array>
 #include <numeric>
 
 constexpr int kLengthAdj = 2;
 
+struct filter_lookup_table{};
 struct element{
     void* data;
     uint64_t size;
 }__attribute__((aligned(8)));
 
+
+struct input_data{ void * data=0;uint64_t block_size=0; uint64_t nitems; };
 struct example{
     std::vector<element> res_nu;
     std::vector<std::string*> nu_buffer;
@@ -20,6 +23,8 @@ struct example{
     inline static std::array<uint64_t,kLengthAdj> kV;
     std::array<uint64_t,kLengthAdj>::iterator v_cur;
     std::string state_id_buffer;
+    input_data input_data;
+    
 };
 
 bool kInitOnce = [](){
@@ -32,22 +37,23 @@ struct filter_lookup_elem{
     void * value = nullptr;
 }__attribute__((aligned(sizeof(uintptr_t))));
 
-#define m(object) reinterpret_cast<example*>(object->fm)
+#define m(object) reinterpret_cast<example*>(object)
 
 
 
-int fmain(filter * f);
-void state_reset(filter * f);
-bool state_next(filter * f);
-const char * state_id(filter * f);
-bool output_is_uniformed(filter * f);
-uint64_t output_bytes(filter * f);
-uint64_t output_size(filter * f);
-void* output(filter * f);
-uint64_t* index(filter * f);
-const char* id(filter * f);
-const char* id_hr(filter * f);
-bool database_close_always(filter * f);
+int fmain(void * f);
+void state_reset(void * f);
+bool state_next(void * f);
+const char * state_id(void * f);
+bool output_is_uniformed(void * f);
+uint64_t output_bytes(void * f);
+uint64_t output_size(void * f);
+void* output(void * f);
+uint64_t* index(void * f);
+const char* id(void * f);
+const char* id_hr(void * f);
+bool database_close_always(void * f);
+int set_input(void * f,void * data,uint64_t block_size,uint64_t nitems);
 
 
 struct filter_lookup_table_example{
@@ -55,6 +61,8 @@ struct filter_lookup_table_example{
     filter_lookup_elem output{.key="output",.value=(void*)::output};
     filter_lookup_elem output_size{.key="output_size",.value=(void*)::output_size};
     filter_lookup_elem output_bytes{.key="output_bytes",.value=(void*)::output_bytes};
+    filter_lookup_elem set_input{.key="set_input",.value=(void*)::set_input};
+    
     filter_lookup_elem index{.key="index",.value=(void*)::index};
     filter_lookup_elem id{.key="id",.value=(void*)::id};
     filter_lookup_elem id_hr{.key="id_hr",.value=(void*)::id_hr};
@@ -70,9 +78,20 @@ struct filter_lookup_table_example{
 #define UNIFORMED
 #ifdef UNIFORMED
 
-int fmain(filter * f) {
-    auto arr = reinterpret_cast<double*>(f->input(f));
-    auto len = f->input_bytes(f)/sizeof(double);
+
+int set_input(void * f,void * data,uint64_t blocksize,uint64_t nitems){
+    m(f)->input_data.data=data;
+    m(f)->input_data.block_size=blocksize;
+    m(f)->input_data.nitems=nitems;
+    return 0;
+}
+int fmain(void * f) {
+    
+    
+//    auto arr = reinterpret_cast<double*>(f->input(f));
+//    auto len = f->input_bytes(f)/sizeof(double);
+    auto arr = reinterpret_cast<double*>(m(f)->input_data.data);
+    auto len = m(f)->input_data.nitems;
 
     m(f)->len=len;
     m(f)->res.resize(0);
@@ -85,10 +104,10 @@ int fmain(filter * f) {
     }
     return 0;
 }
-bool output_is_uniformed(filter * f){ return true; }
-uint64_t output_size(filter * f) { return m(f)->res.size(); }
-uint64_t output_bytes(filter * f) { return m(f)->res.size()*sizeof(double); }
-void* output(filter * f) { return m(f)->res.data(); }
+bool output_is_uniformed(void * f){ return true; }
+uint64_t output_size(void * f) { return m(f)->res.size(); }
+uint64_t output_bytes(void * f) { return m(f)->res.size()*sizeof(double); }
+void* output(void * f) { return m(f)->res.data(); }
 
 #else
 
@@ -126,14 +145,14 @@ void* output(filter * f) { return m(f)->res_nu.data(); }
 
 
 //bool database_close_always(filter * f){ return true; }
-bool database_close_always(filter * f){ return false; }
-void state_reset(filter * f){ m(f)->v_cur=m(f)->kV.begin(); }
-const char * state_id(filter * f){ return (m(f)->state_id_buffer=std::to_string(*m(f)->v_cur)).data(); }
-bool state_next(filter * f){ return m(f)->kV.end() != ++m(f)->v_cur; };
+bool database_close_always(void * f){ return false; }
+void state_reset(void * f){ m(f)->v_cur=m(f)->kV.begin(); }
+const char * state_id(void * f){ return (m(f)->state_id_buffer=std::to_string(*m(f)->v_cur)).data(); }
+bool state_next(void * f){ return m(f)->kV.end() != ++m(f)->v_cur; };
 
-uint64_t* index(filter * f){ return m(f)->res_index.data(); }
-const char* id(filter * f) { return FILTER_ID; }
-const char* id_hr(filter * f) { return FILTER_ID_HR; }
+uint64_t* index(void * f){ return m(f)->res_index.data(); }
+const char* id(void * f) { return FILTER_ID; }
+const char* id_hr(void * f) { return FILTER_ID_HR; }
 
 
 extern "C" uint64_t size_of_pointer(){ return sizeof(uint64_t); }

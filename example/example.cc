@@ -11,7 +11,7 @@ struct element{
     uint64_t size;
 }__attribute__((aligned(8)));
 
-struct subtract{
+struct example{
     std::vector<element> res_nu;
     std::vector<std::string*> nu_buffer;
     std::vector<double> res;
@@ -23,7 +23,7 @@ struct subtract{
 };
 
 bool kInitOnce = [](){
-    std::iota(subtract::kV.begin(),subtract::kV.end(),0);
+    std::iota(example::kV.begin(),example::kV.end(),0);
     return true;
 }.operator()();
 
@@ -32,7 +32,7 @@ struct filter_lookup_elem{
     void * value = nullptr;
 }__attribute__((aligned(sizeof(uintptr_t))));
 
-#define m(object) reinterpret_cast<subtract*>(object->fm)
+#define m(object) reinterpret_cast<example*>(object->fm)
 
 
 
@@ -50,7 +50,7 @@ const char* id_hr(filter * f);
 bool database_close_always(filter * f);
 
 
-struct filter_lookup_table_subtract{
+struct filter_lookup_table_example{
     filter_lookup_elem main{.key="fmain",.value=(void*)fmain};
     filter_lookup_elem output{.key="output",.value=(void*)::output};
     filter_lookup_elem output_size{.key="output_size",.value=(void*)::output_size};
@@ -58,7 +58,7 @@ struct filter_lookup_table_subtract{
     filter_lookup_elem index{.key="index",.value=(void*)::index};
     filter_lookup_elem id{.key="id",.value=(void*)::id};
     filter_lookup_elem id_hr{.key="id_hr",.value=(void*)::id_hr};
-    filter_lookup_elem member{.key="member",.value=(void*)new subtract};
+    filter_lookup_elem member{.key="member",.value=(void*)new example};
     filter_lookup_elem state_reset{.key="state_reset",.value=(void*)::state_reset};
     filter_lookup_elem state_next{.key="state_next",.value=(void*)::state_next};
     filter_lookup_elem state_id{.key="state_id",.value=(void*)::state_id};
@@ -138,17 +138,17 @@ const char* id_hr(filter * f) { return FILTER_ID_HR; }
 
 extern "C" uint64_t size_of_pointer(){ return sizeof(uint64_t); }
 extern "C" filter_lookup_table * lookup_table_initialize(){ 
-    return reinterpret_cast<filter_lookup_table*>(new filter_lookup_table_subtract);
+    return reinterpret_cast<filter_lookup_table*>(new filter_lookup_table_example);
 }
 
 extern "C" void lookup_table_free(filter_lookup_table * f){
-    auto entity = reinterpret_cast<filter_lookup_table_subtract*>(f);
+    auto entity = reinterpret_cast<filter_lookup_table_example*>(f);
 
     {
-        auto m = reinterpret_cast<subtract*>(entity->member.value);
+        auto m = reinterpret_cast<example*>(entity->member.value);
         for(auto elem : m->nu_buffer)delete elem;
     }
     
-    delete reinterpret_cast<subtract*>(entity->member.value);
+    delete reinterpret_cast<example*>(entity->member.value);
     delete entity; 
 }

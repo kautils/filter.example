@@ -96,13 +96,13 @@ int set_input(void * f,void * data,uint64_t blocksize,uint64_t nitems){
 
 
 //use for cache
-void * output_high(){
+void * output_high(void * f){
     static double dummy = 123456;
     return &dummy;
 }
 
 //use for cache
-void * output_low(){
+void * output_low(void * f){
     static double dummy = 654321;
     return &dummy;
 }

@@ -48,6 +48,11 @@ const char * state_id(void * f);
 bool output_is_uniformed(void * f);
 uint64_t output_bytes(void * f);
 uint64_t output_size(void * f);
+void * output_high();
+void * output_low();
+
+
+
 void* output(void * f);
 uint64_t* index(void * f);
 const char* id(void * f);
@@ -61,6 +66,8 @@ struct filter_lookup_table_example{
     filter_lookup_elem output{.key="output",.value=(void*)::output};
     filter_lookup_elem output_size{.key="output_size",.value=(void*)::output_size};
     filter_lookup_elem output_bytes{.key="output_bytes",.value=(void*)::output_bytes};
+    filter_lookup_elem output_high{.key="output_high",.value=(void*)::output_high};
+    filter_lookup_elem output_low{.key="output_low",.value=(void*)::output_low};
     filter_lookup_elem set_input{.key="set_input",.value=(void*)::set_input};
     
     filter_lookup_elem index{.key="index",.value=(void*)::index};
@@ -72,6 +79,7 @@ struct filter_lookup_table_example{
     filter_lookup_elem state_id{.key="state_id",.value=(void*)::state_id};
     filter_lookup_elem output_is_uniformed{.key="output_is_uniformed",.value=(void*)::output_is_uniformed};
     filter_lookup_elem database_close_always{.key="database_close_always",.value=(void*)::database_close_always};
+    
     filter_lookup_elem sentinel{.key=nullptr,.value=nullptr};
 } __attribute__((aligned(sizeof(uintptr_t))));
     
@@ -85,11 +93,23 @@ int set_input(void * f,void * data,uint64_t blocksize,uint64_t nitems){
     m(f)->input_data.nitems=nitems;
     return 0;
 }
+
+
+//use for cache
+void * output_high(){
+    static double dummy = 123456;
+    return &dummy;
+}
+
+//use for cache
+void * output_low(){
+    static double dummy = 654321;
+    return &dummy;
+}
+
+
+
 int fmain(void * f) {
-    
-    
-//    auto arr = reinterpret_cast<double*>(f->input(f));
-//    auto len = f->input_bytes(f)/sizeof(double);
     auto arr = reinterpret_cast<double*>(m(f)->input_data.data);
     auto len = m(f)->input_data.nitems;
 
